@@ -63,6 +63,28 @@ export class VoiceCoach {
     if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
   }
 
+  /** very soft single blip: "I saw that" when a fault is flagged but the spoken cue is held back */
+  tick() {
+    if (!this.enabled) return;
+    try {
+      this.audio ??= new AudioContext();
+      const ctx = this.audio;
+      const s = ctx.currentTime;
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = "sine";
+      o.frequency.value = 440;
+      g.gain.setValueAtTime(0, s);
+      g.gain.linearRampToValueAtTime(0.06, s + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, s + 0.12);
+      o.connect(g).connect(ctx.destination);
+      o.start(s);
+      o.stop(s + 0.15);
+    } catch {
+      /* audio unavailable */
+    }
+  }
+
   /** soft two-tone chime for a counted rep (higher when the rep was clean) */
   chime(clean: boolean) {
     if (!this.enabled) return;

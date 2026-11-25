@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CoachEngine, faultInfo, repPhases, type CoachEvent } from "./engine.ts";
+import { CoachEngine, cueLevel, faultInfo, repPhases, type CoachEvent } from "./engine.ts";
 import { getExercise } from "./exercises.ts";
 import { METRICS } from "./metrics.ts";
 import { angleAt, signedFromDown, tiltDown } from "../pose/geometry.ts";
@@ -53,18 +53,19 @@ function run(engine: CoachEngine, frames: PoseFrame[]) {
 }
 
 /** n squat reps: rest → descend → ascend → rest, at 30 fps. */
-function squats(n: number, depth: number, opts: { trunk?: number; repMs?: number; downMs?: number; thighRatio?: number } = {}) {
+function squats(n: number, depth: number, opts: { trunk?: number; repMs?: number; downMs?: number; thighRatio?: number; ratios?: number[] } = {}) {
   const frames: PoseFrame[] = [];
   let t = 0;
   const repMs = opts.repMs ?? 3000;
   const downFrames = Math.max(1, Math.round(((opts.downMs ?? repMs / 2) / 1000) * 30));
   const upFrames = Math.max(1, Math.round(((repMs - (opts.downMs ?? repMs / 2)) / 1000) * 30));
   // hip-dominant squat by default: thigh ≈ 0.7 × knee flexion, so shin and trunk stay roughly parallel
-  const ratio = opts.thighRatio ?? 0.7;
+  let ratio = opts.thighRatio ?? 0.7;
   const push = (knee: number, trunk = 0) => frames.push(sidePose((t += 33.3), { knee, thigh: knee * ratio, trunk }));
   const pose = (k: number) => push(2 + (depth - 2) * k, (opts.trunk ?? 30) * k);
   for (let i = 0; i < 30; i++) push(2);
   for (let r = 0; r < n; r++) {
+    ratio = opts.ratios?.[r] ?? opts.thighRatio ?? 0.7;
     for (let i = 0; i <= downFrames; i++) pose(Math.sin((Math.PI / 2) * (i / downFrames)));
     for (let i = 1; i <= upFrames; i++) pose(Math.cos((Math.PI / 2) * (i / upFrames)));
     for (let i = 0; i < 20; i++) push(2);
@@ -131,6 +132,30 @@ describe("CoachEngine · reps", () => {
     expect(reps).toHaveLength(3);
     expect(reps.every((r) => r.faults.includes("hips"))).toBe(true);
     expect(events.some((e) => e.type === "say" && /hips back/.test(e.text))).toBe(true);
+  });
+
+  it("tapers a repeating cue, ticks when silent, and says 'Better' once it's fixed", () => {
+    const engine = new CoachEngine(squat, { rangeGoal: 0.8, reps: 20 });
+    // six knee-dominant reps (fault "hips", minor), then one clean rep
+    const { events } = run(engine, squats(7, squat.primary.target, { ratios: [0.45, 0.45, 0.45, 0.45, 0.45, 0.45, 0.7], trunk: 15 }));
+    const info = faultInfo(squat, "hips");
+    // split the event stream into reps
+    const perRep: CoachEvent[][] = [[]];
+    for (const e of events) {
+      perRep[perRep.length - 1].push(e);
+      if (e.type === "rep") perRep.push([]);
+    }
+    const spoken = (evs: CoachEvent[]) => evs.flatMap((e) => (e.type === "say" ? [e.text] : []));
+    const heard = perRep.slice(0, 6).map((evs) => (spoken(evs).includes(info.cue) ? "full" : spoken(evs).includes(info.short!) ? "short" : evs.some((e) => e.type === "flag" && e.id === "hips") ? "tick" : "none"));
+    expect(heard).toEqual(["full", "full", "short", "tick", "short", "tick"]);
+    // a rep's count + feedback is spoken right after its "rep" event, i.e. at the start of the next bucket
+    expect(spoken(perRep[7])).toContain(`Better — ${info.fixed}`);
+    expect(perRep.slice(0, 7).flatMap(spoken).some((x) => x.startsWith("Better"))).toBe(false);
+  });
+
+  it("cue level: major always, minor fades", () => {
+    expect([0, 1, 2, 3, 4, 5].map((n) => cueLevel("minor", n))).toEqual(["full", "full", "short", null, "short", null]);
+    expect([0, 3, 8].map((n) => cueLevel("major", n))).toEqual(["full", "full", "full"]);
   });
 
   it("flags dropping into the squat, but not a controlled descent", () => {

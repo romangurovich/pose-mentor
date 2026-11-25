@@ -141,6 +141,7 @@ export function Session({ ex, cfg, onExit }: Props) {
         if (st) {
           for (const ev of st.events) {
             if (ev.type === "say") voiceRef.current.say(ev.text, ev.kind);
+            if (ev.type === "flag") voiceRef.current.tick();
             if (ev.type === "rep") {
               voiceRef.current.chime(ev.rep.faults.length === 0 && ev.rep.full);
               setFlash(ev.rep);

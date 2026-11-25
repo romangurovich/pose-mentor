@@ -64,6 +64,8 @@ export type CoachEvent =
   | { type: "say"; text: string; kind: "cue" | "count" | "praise" | "info"; key?: string }
   | { type: "rep"; rep: RepRecord }
   | { type: "side-done"; side: Side }
+  /** a fault was detected but deliberately not spoken (cue tapering) — the UI plays a soft tick */
+  | { type: "flag"; id: string }
   | { type: "done" };
 
 export interface CoachState {
@@ -129,16 +131,37 @@ interface FaultTrack {
 }
 
 /** faults the engine detects itself (timing / rhythm), as opposed to an exercise's metric-based form checks */
-export const BUILTIN_FAULTS: Record<string, { label: string; cue: string; severity: "major" | "minor" }> = {
-  tempo: { label: "Rushing the rep", cue: "Take about 2 seconds each way", severity: "minor" },
-  lowering: { label: "Dropping too fast", cue: "Lower slowly, with control", severity: "minor" },
-  bounce: { label: "Bouncing", cue: "Hold still — no bouncing", severity: "minor" },
+export interface FaultInfo {
+  label: string;
+  cue: string;
+  short?: string;
+  fixed?: string;
+  severity: "major" | "minor";
+}
+
+export const BUILTIN_FAULTS: Record<string, FaultInfo> = {
+  tempo: { label: "Rushing the rep", cue: "Take about 2 seconds each way", short: "Slower", fixed: "good pace", severity: "minor" },
+  lowering: { label: "Dropping too fast", cue: "Lower slowly, with control", short: "Slow on the way down", fixed: "nice control", severity: "minor" },
+  bounce: { label: "Bouncing", cue: "Hold still — no bouncing", fixed: "nice and still", severity: "minor" },
 };
 
 /** label / cue / severity for any fault id an exercise can produce */
-export function faultInfo(ex: ExerciseDef, id: string): { label: string; cue: string; severity: "major" | "minor" } {
+export function faultInfo(ex: ExerciseDef, id: string): FaultInfo {
   const c = ex.checks.find((x) => x.id === id);
-  return c ? { label: c.label, cue: c.cue, severity: c.severity } : BUILTIN_FAULTS[id] ?? { label: id, cue: "", severity: "minor" };
+  return c ? { label: c.label, cue: c.cue, short: c.short, fixed: c.fixed, severity: c.severity } : BUILTIN_FAULTS[id] ?? { label: id, cue: "", severity: "minor" };
+}
+
+/**
+ * Cue tapering for reps (feedback that fades as a fault repeats helps retention — the "guidance hypothesis",
+ * Winstein & Schmidt 1990 — and avoids nagging):
+ *   major faults            → full cue every rep
+ *   1st and 2nd rep in a row → full cue
+ *   after that              → short reminder every other rep, silent (soft tick) in between
+ * `streak` = how many reps in a row *before this one* had the fault.
+ */
+export function cueLevel(severity: "major" | "minor", streak: number): "full" | "short" | null {
+  if (severity === "major" || streak < 2) return "full";
+  return (streak - 2) % 2 === 0 ? "short" : null;
 }
 
 /**
@@ -189,6 +212,11 @@ export class CoachEngine {
   /** progress trace of the current rep, for timing its lowering phase */
   private repSamples: Array<{ t: number; p: number }> = [];
   private repFaults = new Set<string>();
+  // cue tapering (reps)
+  private attempt = 0;
+  private faultStreak = new Map<string, number>();
+  private repCued = new Set<string>();
+  private lastCuedAttempt = new Map<string, number>();
   private restSince: number | null = null;
   /** a rep may only start after the start position has been seen */
   private armed = false;
@@ -282,13 +310,45 @@ export class CoachEngine {
     return [idx(ref as Joint, side)];
   }
 
-  private say(text: string, kind: "cue" | "count" | "praise" | "info", t: number, key = text, force = false) {
+  private say(text: string, kind: "cue" | "count" | "praise" | "info", t: number, key = text, force = false): boolean {
     const last = this.lastSaid.get(key) ?? -Infinity;
-    if (t - last < SAME_CUE_GAP_MS) return;
-    if (!force && t - (this.lastSay[kind] ?? -Infinity) < SAY_GAP_MS) return;
+    if (t - last < SAME_CUE_GAP_MS) return false;
+    if (!force && t - (this.lastSay[kind] ?? -Infinity) < SAY_GAP_MS) return false;
     this.lastSay[kind] = t;
     this.lastSaid.set(key, t);
     this.events.push({ type: "say", text, kind, key });
+    return true;
+  }
+
+  /** speak a fault's cue during a rep, tapered by how many reps in a row it has shown up */
+  private cueRepFault(id: string, t: number) {
+    if (this.repCued.has(id)) return; // once per rep
+    this.repCued.add(id);
+    const info = faultInfo(this.ex, id);
+    const level = cueLevel(info.severity, this.faultStreak.get(id) ?? 0);
+    const text = level === "short" ? info.short ?? info.cue : info.cue;
+    // unique key per rep: repetition is governed by the tapering, not the time-based gap
+    if (level && this.say(text, "cue", t, `${id}#${this.attempt}`)) this.lastCuedAttempt.set(id, this.attempt);
+    else this.events.push({ type: "flag", id });
+  }
+
+  /**
+   * Update fault streaks at the end of a rep. Returns the faults that were cued during their latest run
+   * and are now gone, so the coach can say "Better".
+   */
+  private endRepStreaks(faults: string[]): string[] {
+    const fixed: string[] = [];
+    const ids = new Set([...this.ex.checks.map((c) => c.id), ...Object.keys(BUILTIN_FAULTS), ...this.faultStreak.keys()]);
+    for (const id of ids) {
+      if (faults.includes(id)) this.faultStreak.set(id, (this.faultStreak.get(id) ?? 0) + 1);
+      else {
+        // it ran for `streak` reps before this one; acknowledge the fix if we spoke up at any point in that run
+        const streak = this.faultStreak.get(id) ?? 0;
+        if (streak > 0 && (this.lastCuedAttempt.get(id) ?? -Infinity) >= this.attempt - streak) fixed.push(id);
+        this.faultStreak.delete(id);
+      }
+    }
+    return fixed;
   }
 
   private setStatus(s: Status, _t: number) {
@@ -381,8 +441,17 @@ export class CoachEngine {
       }
       if (!tr.on && tr.raw && t - tr.since >= FAULT_ON_MS) {
         tr.on = true;
-        if (this.status === "active") this.say(c.cue, "cue", t, c.id);
-      } else if (tr.on && !tr.raw && t - tr.since >= FAULT_OFF_MS) tr.on = false;
+        if (this.status === "active") {
+          if (this.ex.kind === "reps") this.cueRepFault(c.id, t);
+          else if (!this.say(c.cue, "cue", t, c.id)) this.events.push({ type: "flag", id: c.id });
+        }
+      } else if (tr.on && !tr.raw && t - tr.since >= FAULT_OFF_MS) {
+        tr.on = false;
+        // holds: acknowledge a correction made right after the cue
+        if (this.ex.kind === "hold" && this.inPosition && t - (this.lastSaid.get(c.id) ?? -Infinity) < 8000) {
+          this.say(`Better — ${c.fixed ?? "that's it"}`, "praise", t, `fixed-${c.id}`, true);
+        }
+      }
       tr.value = value;
       this.faults.set(c.id, tr);
       if (tr.on) {
@@ -457,6 +526,8 @@ export class CoachEngine {
       this.holdAnnounced.clear();
       this.baseline.clear();
       this.clearFaults();
+      this.faultStreak.clear();
+      this.lastCuedAttempt.clear();
       this.switchSince = t;
       this.resetFraming();
       this.setStatus("switch", t);
@@ -551,6 +622,8 @@ export class CoachEngine {
         this.repPeakValue = value;
         this.repSamples = [{ t, p }];
         this.repFaults.clear();
+        this.attempt++;
+        this.repCued.clear();
         this.setStatus("active", t);
       }
     }
@@ -583,6 +656,7 @@ export class CoachEngine {
     const reach = this.repMaxP;
     const duration = t - this.repStart;
     if (reach < 0.7) {
+      this.endRepStreaks([...this.repFaults]);
       if (reach >= 0.4) this.say("Go a little further — reach the target line", "cue", t, "further");
       return;
     }
@@ -619,12 +693,20 @@ export class CoachEngine {
 
     const n = this.reps.filter((r) => r.side === side).length;
     const repsThisSide = this.ex.bothSides ? n : this.reps.length;
-    // voice: count, then one piece of feedback
+    // voice: count, then one piece of feedback (timing cue > short of range > "better" > occasional praise)
+    const timing = faults.includes("tempo") ? "tempo" : faults.includes("lowering") ? "lowering" : null;
+    const timingLevel = timing ? cueLevel("minor", this.faultStreak.get(timing) ?? 0) : null;
+    const fixed = this.endRepStreaks(faults);
     this.say(String(repsThisSide), "count", t, `count-${this.reps.length}`, true);
-    if (faults.includes("tempo")) this.say("Slow it down a little", "cue", t, "tempo", true);
-    else if (faults.includes("lowering")) this.say(BUILTIN_FAULTS.lowering.cue, "cue", t, "lowering", true);
-    else if (!full) this.say("Almost — a bit further next time", "cue", t, "almost", true);
-    else if (faults.length === 0 && repsThisSide % 3 === 0) {
+    if (timing && timingLevel) {
+      const b = BUILTIN_FAULTS[timing];
+      const text = timingLevel === "short" ? b.short ?? b.cue : timing === "tempo" ? "Slow it down a little" : b.cue;
+      this.say(text, "cue", t, `${timing}#${this.attempt}`, true);
+      this.lastCuedAttempt.set(timing, this.attempt);
+    } else if (!full) this.say("Almost — a bit further next time", "cue", t, "almost", true);
+    else if (fixed.length) {
+      this.say(`Better — ${faultInfo(this.ex, fixed[0]).fixed ?? "that's it"}`, "praise", t, `fixed#${this.attempt}`, true);
+    } else if (faults.length === 0 && repsThisSide % 3 === 0) {
       this.say(PRAISE[this.praiseIdx++ % PRAISE.length], "praise", t, "praise", true);
     }
 

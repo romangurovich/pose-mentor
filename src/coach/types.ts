@@ -22,6 +22,10 @@ export interface FormCheck {
   label: string;
   /** imperative coaching cue, spoken + shown ("Keep your chest up") */
   cue: string;
+  /** terse reminder once the fault has repeated for a few reps ("Chest up") */
+  short?: string;
+  /** spoken after "Better — " when the person fixes it right after being cued ("chest is up") */
+  fixed?: string;
   metric: MetricId;
   op: ">" | "<";
   threshold: number;

@@ -43,7 +43,8 @@ webcam ─► MediaPipe Pose (WASM/WebGL) ─► 33 landmarks ─► One Euro fi
   - per-rep timing: "slow down" when the whole rep is rushed, "lower slowly" when the lowering half is a drop (the
     descent for squats and lunges, the way back down for raises and sit-to-stand)
   - debounced checks, some evaluated relative to a baseline captured in the start position
-  - throttled speech
+  - tapered speech: a repeating fault gets its full cue on the first two reps, then a short reminder every other rep and a
+    soft tick in between (major faults are cued every rep); fixing a cued fault earns a "Better — …"
 - **`src/ui/`**: React UI. `overlay.ts` draws the skeleton, fault highlights and live angle arc on a canvas. `demo/figure.ts`
   is a small forward-kinematics stick figure that animates every exercise demo from two joint-angle poses.
 

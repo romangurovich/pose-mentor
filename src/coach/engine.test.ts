@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CoachEngine, type CoachEvent } from "./engine.ts";
+import { CoachEngine, faultInfo, repPhases, type CoachEvent } from "./engine.ts";
 import { getExercise } from "./exercises.ts";
 import { METRICS } from "./metrics.ts";
 import { angleAt, signedFromDown, tiltDown } from "../pose/geometry.ts";
@@ -35,8 +35,10 @@ function sidePose(t: number, o: { knee?: number; thigh?: number; trunk?: number;
   put(LM.leftAnkle, LM.rightAnkle, ankle);
   put(LM.leftHeel, LM.rightHeel, { x: ankle.x - 0.03, y: ankle.y + 0.02 });
   put(LM.leftFootIndex, LM.rightFootIndex, { x: ankle.x + 0.07, y: ankle.y + 0.025 });
-  put(LM.leftEar, LM.rightEar, { x: shoulder.x, y: shoulder.y - 0.09 });
-  pts[LM.nose] = { x: shoulder.x + 0.04, y: shoulder.y - 0.09 };
+  // head stays in line with the trunk
+  const head = { x: shoulder.x + Math.sin(trunk * d2r) * 0.09, y: shoulder.y - Math.cos(trunk * d2r) * 0.09 };
+  put(LM.leftEar, LM.rightEar, head);
+  pts[LM.nose] = { x: head.x + Math.cos(trunk * d2r) * 0.04, y: head.y + Math.sin(trunk * d2r) * 0.04 };
   return { t, pts, vis: new Array(NUM_LANDMARKS).fill(0.95) };
 }
 
@@ -51,17 +53,20 @@ function run(engine: CoachEngine, frames: PoseFrame[]) {
 }
 
 /** n squat reps: rest → descend → ascend → rest, at 30 fps. */
-function squats(n: number, depth: number, opts: { trunk?: number; repMs?: number } = {}) {
+function squats(n: number, depth: number, opts: { trunk?: number; repMs?: number; downMs?: number; thighRatio?: number } = {}) {
   const frames: PoseFrame[] = [];
   let t = 0;
-  const repFrames = Math.round(((opts.repMs ?? 3000) / 1000) * 30);
-  const push = (knee: number, trunk = 0) => frames.push(sidePose((t += 33.3), { knee, trunk }));
+  const repMs = opts.repMs ?? 3000;
+  const downFrames = Math.max(1, Math.round(((opts.downMs ?? repMs / 2) / 1000) * 30));
+  const upFrames = Math.max(1, Math.round(((repMs - (opts.downMs ?? repMs / 2)) / 1000) * 30));
+  // hip-dominant squat by default: thigh ≈ 0.7 × knee flexion, so shin and trunk stay roughly parallel
+  const ratio = opts.thighRatio ?? 0.7;
+  const push = (knee: number, trunk = 0) => frames.push(sidePose((t += 33.3), { knee, thigh: knee * ratio, trunk }));
+  const pose = (k: number) => push(2 + (depth - 2) * k, (opts.trunk ?? 30) * k);
   for (let i = 0; i < 30; i++) push(2);
   for (let r = 0; r < n; r++) {
-    for (let i = 0; i <= repFrames; i++) {
-      const k = Math.sin((Math.PI * i) / repFrames);
-      push(2 + (depth - 2) * k, (opts.trunk ?? 20) * k);
-    }
+    for (let i = 0; i <= downFrames; i++) pose(Math.sin((Math.PI / 2) * (i / downFrames)));
+    for (let i = 1; i <= upFrames; i++) pose(Math.cos((Math.PI / 2) * (i / upFrames)));
     for (let i = 0; i < 20; i++) push(2);
   }
   return frames;
@@ -118,6 +123,27 @@ describe("CoachEngine · reps", () => {
     expect(reps.every((r) => r.faults.includes("tempo"))).toBe(true);
   });
 
+  it("cues hips back when the knees drive forward", () => {
+    const engine = new CoachEngine(squat, { rangeGoal: 0.8, reps: 10 });
+    // knee-dominant: thigh only 0.45 × knee flexion → steep shin, upright trunk
+    const { events } = run(engine, squats(3, squat.primary.target, { thighRatio: 0.45, trunk: 15 }));
+    const reps = events.flatMap((e) => (e.type === "rep" ? [e.rep] : []));
+    expect(reps).toHaveLength(3);
+    expect(reps.every((r) => r.faults.includes("hips"))).toBe(true);
+    expect(events.some((e) => e.type === "say" && /hips back/.test(e.text))).toBe(true);
+  });
+
+  it("flags dropping into the squat, but not a controlled descent", () => {
+    const drop = run(new CoachEngine(squat, { rangeGoal: 0.8, reps: 10 }), squats(2, squat.primary.target, { repMs: 3000, downMs: 150 }));
+    const dropReps = drop.events.flatMap((e) => (e.type === "rep" ? [e.rep] : []));
+    expect(dropReps.length).toBeGreaterThan(0);
+    expect(dropReps.every((r) => r.faults.includes("lowering") && !r.faults.includes("tempo"))).toBe(true);
+    expect(drop.events.some((e) => e.type === "say" && e.text === faultInfo(squat, "lowering").cue)).toBe(true);
+
+    const ctrl = run(new CoachEngine(squat, { rangeGoal: 0.8, reps: 10 }), squats(2, squat.primary.target, { repMs: 3000, downMs: 1800 }));
+    expect(ctrl.events.flatMap((e) => (e.type === "rep" ? e.rep.faults : []))).not.toContain("lowering");
+  });
+
   it("asks you to turn sideways when facing the camera", () => {
     const engine = new CoachEngine(squat, { rangeGoal: 0.8 });
     let st = engine.update(sidePose(0, { frontal: true }));
@@ -165,7 +191,37 @@ describe("CoachEngine · reps", () => {
   });
 });
 
+describe("repPhases", () => {
+  it("times the way out and the way back from the top of the rep", () => {
+    const trace = [0.3, 0.6, 1, 0.98, 1.02, 0.95, 0.5, 0.15].map((p, i) => ({ t: i * 100, p }));
+    expect(repPhases(trace)).toEqual({ outMs: 200, returnMs: 200 });
+  });
+});
+
 describe("CoachEngine · holds", () => {
+  it("calls out bouncing in a stretch, but not a slow ease deeper", () => {
+    const ex = getExercise("hamstring-stretch");
+    const holdIn = (bounce: (i: number) => number) => {
+      const engine = new CoachEngine(ex, { rangeGoal: 1, holdSeconds: 60 });
+      let t = 0;
+      const events: CoachEvent[] = [];
+      let st = engine.update(sidePose(t));
+      for (let i = 0; i < 20; i++) st = engine.update(sidePose((t += 33.3)));
+      for (let i = 0; i < 150; i++) {
+        st = engine.update(sidePose((t += 33.3), { trunk: ex.primary.target + 2 + bounce(i) }));
+        events.push(...st.events);
+      }
+      return { st, events };
+    };
+    // ±6° at ~2 Hz
+    const bouncy = holdIn((i) => 6 * Math.sin((2 * Math.PI * i) / 15));
+    expect(bouncy.st.faults.map((f) => f.id)).toContain("bounce");
+    expect(bouncy.events.some((e) => e.type === "say" && /bouncing/.test(e.text))).toBe(true);
+    // 12° deeper over 5 s, monotonic
+    const easing = holdIn((i) => (12 * i) / 150);
+    expect(easing.st.faults.map((f) => f.id)).not.toContain("bounce");
+  });
+
   it("times a wall sit only while in position", () => {
     const ex = getExercise("wall-sit");
     const engine = new CoachEngine(ex, { rangeGoal: 1, holdSeconds: 5 });

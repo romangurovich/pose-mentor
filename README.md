@@ -16,7 +16,7 @@ Open the URL in Chrome, Edge or Safari, pick an exercise, set up the camera as t
 | | |
 |---|---|
 | **Exercises** | 15 rehab staples: squat, sit-to-stand, straight-leg raise, hurdle step, inline lunge, hip abduction, wall sit, quad/hamstring stretches, shoulder abduction/scaption/flexion/extension, side bend, neck side-stretch |
-| **Coaching** | rep counting and hold timer, range-of-motion goal, 2–3 form checks per exercise, tempo cue, auto side-detection and side switching, framing and orientation guidance, voice and chime |
+| **Coaching** | rep counting and hold timer, range-of-motion goal, 2–4 form checks per exercise, tempo and lower-slowly (eccentric control) cues, bounce detection in stretches, auto side-detection and side switching, framing and orientation guidance, voice and chime |
 | **Model** | MediaPipe Pose Landmarker (BlazePose GHUM, 33 landmarks), pretrained and used as-is. Lite, full and heavy variants; GPU with CPU fallback |
 | **Public data** | [UI-PRMD](https://doi.org/10.3390/data3010002) rehab-movement recordings for range calibration and evaluation; AAOS normative joint ranges for the rest |
 
@@ -39,7 +39,9 @@ webcam ─► MediaPipe Pose (WASM/WebGL) ─► 33 landmarks ─► One Euro fi
   - side selection (visible side, the moving limb, or the front foot)
   - a hysteresis rep machine that arms only after it sees the start position, counts reps that reach ≥ 70% of the goal, and
     nudges shallower attempts
-  - hold timer that pauses on major faults
+  - hold timer that pauses on major faults, plus a zig-zag detector that calls out bouncing in a stretch
+  - per-rep timing: "slow down" when the whole rep is rushed, "lower slowly" when the lowering half is a drop (the
+    descent for squats and lunges, the way back down for raises and sit-to-stand)
   - debounced checks, some evaluated relative to a baseline captured in the start position
   - throttled speech
 - **`src/ui/`**: React UI. `overlay.ts` draws the skeleton, fault highlights and live angle arc on a canvas. `demo/figure.ts`
@@ -65,20 +67,23 @@ each performed correctly and in a deliberately "non-optimal" way, recorded with 
    - Shoulder shrug detection flagged 70% of correct abductions. Some shoulder elevation is normal near the top of the
      raise, so the check now runs only during the first 55% of the lift (2% of correct reps flagged).
    - Sit-to-stand recordings run stand→sit→stand, so this exercise is coached in reverse, starting seated.
+   - The straight-leg-raise standing-knee check flagged 21% of correct reps at 22° (the same Kinect knee artifact), so its
+     limit is 28°; the lunge's front-knee-over-ankle check is weak on this data and set to 40° to keep false alarms low.
+   - "Lower slowly" fires below 0.8 × the fastest-10% lowering phase of the healthy reps, so it catches drops, not brisk reps.
 5. `node scripts/evaluate.ts` stitches each subject's reps into a continuous stream, adds MediaPipe-like jitter, and runs the
    **full browser engine** (smoother, gates, side detection, rep machine, checks). Results are in
    **[docs/evaluation.md](docs/evaluation.md)**:
 
 | Exercise | Reps counted (correct) | Correct reps flagged | Incorrect reps flagged or not counted |
 |---|---|---|---|
-| Squat | 98/100 | 11% | 68% |
+| Squat | 98/100 | 11% | 73% |
 | Hurdle step | 100/100 | 5% | 68% |
-| Inline lunge | 96/100 | 11% | 52% |
+| Inline lunge | 96/100 | 13% | 56% |
 | Shoulder abduction | 99/100 | 0% | 50% |
 | Shoulder scaption | 100/100 | 2% | 70% |
-| Sit to stand | 87/90 | 8% | 4% |
+| Sit to stand | 87/90 | 8% | 7% |
 | Shoulder extension | 61/100 | 16% | 84% |
-| Straight-leg raise | 100/100 | 59% ⚠ | 85% |
+| Straight-leg raise | 100/100 | 59% ⚠ | 88% |
 
 Overall rep-count recall on correct reps is **94%**. Known weak spots, kept visible on purpose:
 
@@ -87,7 +92,9 @@ Overall rep-count recall on correct reps is **94%**. Known weak spots, kept visi
 - **Shoulder extension:** several subjects switched arms between reps, and the coach locks onto one arm per set.
 - **Sit-to-stand:** the incorrect reps (balance and weight-shift issues) aren't visible to these 2D checks.
 
-The thresholds for the 7 non-UI-PRMD exercises come from AAOS normative ranges and standard clinical cues, not from data.
+The thresholds for the 7 non-UI-PRMD exercises, and the new checks on those exercises (wall-sit shin and back position,
+quad-stretch arch, hamstring-stretch head drop, hip-abduction hip hike, side-bend rotation, neck-stretch head turn), come
+from AAOS normative ranges and standard clinical cues, not from data.
 Each one's `basis` is shown in the app under *"What I check, and why these numbers"*.
 
 ## Scripts
@@ -95,7 +102,7 @@ Each one's `basis` is shown in the app under *"What I check, and why these numbe
 | | |
 |---|---|
 | `npm run dev` / `build` / `preview` | app (asset setup runs automatically) |
-| `npm test` | unit tests for geometry and the engine (reps, faults, shallow reps, tempo, gates, holds) |
+| `npm test` | unit tests for geometry and the engine (reps, faults, shallow reps, tempo, lowering speed, gates, holds, bouncing) |
 | `npm run data:fetch` | download UI-PRMD Kinect data into `data/uiprmd` (≈200 MB) |
 | `npm run data:calibrate` | regenerate `src/data/calibration.json` + `docs/calibration.md` |
 | `npm run data:evaluate` | regenerate `docs/evaluation.md` |

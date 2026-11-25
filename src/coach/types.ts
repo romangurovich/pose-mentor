@@ -74,6 +74,12 @@ export interface ExerciseDef {
   /** reps faster than this get a "slow down" cue, ms. For UI-PRMD moves ≈ 0.9 × the 10th-percentile duration
    *  of the healthy demonstration reps, so only genuinely rushed reps are flagged. */
   minRepMs?: number;
+  /** a lowering (eccentric) phase faster than this gets a "lower slowly" cue, ms. For UI-PRMD moves
+   *  ≈ 0.8 × the 10th-percentile duration of that phase in the healthy reps. */
+  minLowerMs?: number;
+  /** which half of the rep is the lowering one: "return" (raises: the way back down, default) or
+   *  "out" (squat / lunge: the descent away from the start) */
+  lowerPhase?: "out" | "return";
   primary: PrimaryMotion;
   checks: FormCheck[];
   /** landmarks that must be visible (sided joints use the assessed side; "*" both sides) */

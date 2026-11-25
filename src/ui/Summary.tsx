@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ExerciseDef } from "../coach/types.ts";
-import type { RepRecord } from "../coach/engine.ts";
+import { faultInfo, type RepRecord } from "../coach/engine.ts";
 import { METRICS } from "../coach/metrics.ts";
 import type { SessionResult } from "./history.ts";
 import { ScoreBadge } from "./Library.tsx";
@@ -24,9 +24,9 @@ export function Summary({ ex, result, onAgain, onLibrary }: Props) {
   const score = result.formScore;
   const verdict =
     score === null ? "No reps recorded" : score >= 85 ? "Excellent form" : score >= 65 ? "Good — a couple of things to tidy up" : "Let's work on technique";
-  const checkLabel = (id: string) => (id === "tempo" ? "Rushing the rep" : ex.checks.find((c) => c.id === id)?.label ?? id);
-  const checkCue = (id: string) => (id === "tempo" ? "Take about 2 seconds each way" : ex.checks.find((c) => c.id === id)?.cue ?? "");
-  const checkSeverity = (id: string) => (id === "tempo" ? "minor" : ex.checks.find((c) => c.id === id)?.severity ?? "minor");
+  const checkLabel = (id: string) => faultInfo(ex, id).label;
+  const checkCue = (id: string) => faultInfo(ex, id).cue;
+  const checkSeverity = (id: string) => faultInfo(ex, id).severity;
   const tally = Object.entries(result.faultTally).sort((a, b) => b[1] - a[1]);
 
   const full = reps.filter((r) => r.full).length;

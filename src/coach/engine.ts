@@ -128,6 +128,45 @@ interface FaultTrack {
   value: number;
 }
 
+/** faults the engine detects itself (timing / rhythm), as opposed to an exercise's metric-based form checks */
+export const BUILTIN_FAULTS: Record<string, { label: string; cue: string; severity: "major" | "minor" }> = {
+  tempo: { label: "Rushing the rep", cue: "Take about 2 seconds each way", severity: "minor" },
+  lowering: { label: "Dropping too fast", cue: "Lower slowly, with control", severity: "minor" },
+  bounce: { label: "Bouncing", cue: "Hold still — no bouncing", severity: "minor" },
+};
+
+/** label / cue / severity for any fault id an exercise can produce */
+export function faultInfo(ex: ExerciseDef, id: string): { label: string; cue: string; severity: "major" | "minor" } {
+  const c = ex.checks.find((x) => x.id === id);
+  return c ? { label: c.label, cue: c.cue, severity: c.severity } : BUILTIN_FAULTS[id] ?? { label: id, cue: "", severity: "minor" };
+}
+
+/**
+ * Split one rep's progress trace (from leaving the start until back near it) into its two halves:
+ *   out    = start → first reaching the top of this rep's range (within 0.1 of its peak)
+ *   return = last time at the top → back at the start
+ * Shared with scripts/calibrate.ts so thresholds and the live check use the same definition.
+ */
+export function repPhases(samples: ReadonlyArray<{ t: number; p: number }>): { outMs: number; returnMs: number } {
+  if (samples.length < 2) return { outMs: 0, returnMs: 0 };
+  const maxP = Math.max(...samples.map((x) => x.p));
+  let first = -1, last = -1;
+  samples.forEach((x, i) => {
+    if (x.p >= maxP - 0.1) {
+      if (first < 0) first = i;
+      last = i;
+    }
+  });
+  const end = samples[samples.length - 1].t;
+  return { outMs: samples[first].t - samples[0].t, returnMs: end - samples[last].t };
+}
+
+/** bounce detection in holds: a swing reverses direction after moving at least this far (primary-metric units) */
+const BOUNCE_SWING = 5;
+/** …and this many reversals inside the window count as bouncing */
+const BOUNCE_REVERSALS = 3;
+const BOUNCE_WINDOW_MS = 2500;
+
 const PRAISE = ["Nice rep", "Good control", "That's it", "Great form", "Smooth"];
 
 export class CoachEngine {
@@ -147,6 +186,8 @@ export class CoachEngine {
   private repStart = 0;
   private repMaxP = 0;
   private repPeakValue = 0;
+  /** progress trace of the current rep, for timing its lowering phase */
+  private repSamples: Array<{ t: number; p: number }> = [];
   private repFaults = new Set<string>();
   private restSince: number | null = null;
   /** a rep may only start after the start position has been seen */
@@ -161,6 +202,12 @@ export class CoachEngine {
   private holdFaultSec: Record<string, number> = {};
   private holdBest = 0;
   private holdAnnounced = new Set<string>();
+  // bounce detection (holds)
+  private bounceExtreme: number | null = null;
+  private bounceDir = 0;
+  private bounceRevs: number[] = [];
+  private bounceOn = false;
+  private bounceSwing = 0;
 
   // checks
   private baseline = new Map<string, number>();
@@ -502,6 +549,7 @@ export class CoachEngine {
         this.repStart = t;
         this.repMaxP = p;
         this.repPeakValue = value;
+        this.repSamples = [{ t, p }];
         this.repFaults.clear();
         this.setStatus("active", t);
       }
@@ -514,6 +562,7 @@ export class CoachEngine {
         this.repMaxP = p;
         this.repPeakValue = value;
       }
+      this.repSamples.push({ t, p });
       for (const fl of faults) this.repFaults.add(fl.id);
       if (t - this.repStart > 20000) {
         this.moving = false; // abandoned
@@ -538,12 +587,19 @@ export class CoachEngine {
       return;
     }
     const faults = [...this.repFaults];
-    if (this.ex.minRepMs && duration < this.ex.minRepMs) faults.push("tempo");
+    const rushed = !!this.ex.minRepMs && duration < this.ex.minRepMs;
+    if (rushed) faults.push("tempo");
+    // eccentric control: the return to the start position shouldn't be a drop
+    else if (this.ex.minLowerMs) {
+      const ph = repPhases(this.repSamples);
+      const lowerMs = this.ex.lowerPhase === "out" ? ph.outMs : ph.returnMs;
+      if (lowerMs < this.ex.minLowerMs) faults.push("lowering");
+    }
     const full = reach >= 0.95;
     let score = 100;
     for (const id of faults) {
       const c = this.ex.checks.find((x) => x.id === id);
-      score -= id === "tempo" ? 10 : c?.severity === "major" ? 25 : 12;
+      score -= id in BUILTIN_FAULTS ? 10 : c?.severity === "major" ? 25 : 12;
     }
     if (!full) score -= Math.round((0.95 - reach) * 100);
     score = clamp(Math.round(score), 0, 100);
@@ -566,6 +622,7 @@ export class CoachEngine {
     // voice: count, then one piece of feedback
     this.say(String(repsThisSide), "count", t, `count-${this.reps.length}`, true);
     if (faults.includes("tempo")) this.say("Slow it down a little", "cue", t, "tempo", true);
+    else if (faults.includes("lowering")) this.say(BUILTIN_FAULTS.lowering.cue, "cue", t, "lowering", true);
     else if (!full) this.say("Almost — a bit further next time", "cue", t, "almost", true);
     else if (faults.length === 0 && repsThisSide % 3 === 0) {
       this.say(PRAISE[this.praiseIdx++ % PRAISE.length], "praise", t, "praise", true);
@@ -585,6 +642,8 @@ export class CoachEngine {
 
     this.setStatus(this.inPosition ? "active" : "ready", t);
     const faults = this.evalChecks(f, side, facing, p, t);
+    const bounce = this.trackBounce(value, t);
+    if (bounce) faults.push(bounce);
     const paused = faults.some((x) => x.severity === "major");
 
     if (this.inPosition) {
@@ -623,6 +682,43 @@ export class CoachEngine {
     return this.snapshot(f, faults, value, p, facing, []);
   }
 
+  /** zig-zag detector on the primary metric while holding: repeated quick reversals = ballistic bouncing */
+  private trackBounce(value: number, t: number): ActiveFault | null {
+    if (!this.inPosition) {
+      this.resetBounce();
+      return null;
+    }
+    if (this.bounceExtreme === null) this.bounceExtreme = value; // anchor until a first swing sets a direction
+    if (this.bounceDir === 0) {
+      if (Math.abs(value - this.bounceExtreme) >= BOUNCE_SWING) {
+        this.bounceDir = Math.sign(value - this.bounceExtreme);
+        this.bounceExtreme = value;
+      }
+    } else if ((value - this.bounceExtreme) * this.bounceDir > 0) {
+      this.bounceExtreme = value; // still moving the same way
+    } else if (Math.abs(value - this.bounceExtreme) >= BOUNCE_SWING) {
+      this.bounceRevs.push(t);
+      this.bounceSwing = Math.abs(value - this.bounceExtreme);
+      this.bounceDir = -this.bounceDir;
+      this.bounceExtreme = value;
+    }
+    this.bounceRevs = this.bounceRevs.filter((x) => t - x <= BOUNCE_WINDOW_MS);
+    if (!this.bounceOn && this.bounceRevs.length >= BOUNCE_REVERSALS) {
+      this.bounceOn = true;
+      this.say(BUILTIN_FAULTS.bounce.cue, "cue", t, "bounce");
+    } else if (this.bounceOn && (this.bounceRevs.length === 0 || t - this.bounceRevs[this.bounceRevs.length - 1] > 1500)) this.bounceOn = false;
+    if (!this.bounceOn) return null;
+    const b = BUILTIN_FAULTS.bounce;
+    return { id: "bounce", label: b.label, cue: b.cue, severity: b.severity, value: this.bounceSwing, threshold: BOUNCE_SWING, unit: METRICS[this.ex.primary.metric].unit };
+  }
+
+  private resetBounce() {
+    this.bounceExtreme = null;
+    this.bounceDir = 0;
+    this.bounceRevs = [];
+    this.bounceOn = false;
+  }
+
   // ───────────────────────────────────────────── snapshot ─────────────────────────────────────────────
 
   private headline(missing: string[]): [string, string] {
@@ -652,7 +748,8 @@ export class CoachEngine {
   private snapshot(_f: PoseFrame | null, faults: ActiveFault[], value: number, p: number, facing: number, missing: string[]): CoachState {
     const highlight = new Map<number, "major" | "minor">();
     for (const fl of faults) {
-      const c = this.ex.checks.find((x) => x.id === fl.id)!;
+      const c = this.ex.checks.find((x) => x.id === fl.id);
+      if (!c) continue;
       for (const ref of c.joints)
         for (const i of this.jointRefIdx(ref, this.side)) {
           if (highlight.get(i) !== "major") highlight.set(i, fl.severity);

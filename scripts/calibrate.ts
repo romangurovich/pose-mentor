@@ -16,6 +16,7 @@ import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { EXERCISES, UIPRMD_MAP } from "../src/coach/exercises.ts";
 import { METRICS } from "../src/coach/metrics.ts";
+import { repPhases } from "../src/coach/engine.ts";
 import type { ExerciseDef } from "../src/coach/types.ts";
 import { loadEpisodes, MOVEMENTS } from "./lib/uiprmd.ts";
 import { replay } from "./lib/episodes.ts";
@@ -36,6 +37,24 @@ interface EpisodeStats {
   rest: number;
   excursion: number;
   checks: Record<string, number>; // worst value of each check metric during the movement
+  /** lowering (eccentric) phase duration, ms — see ExerciseDef.lowerPhase */
+  lowerMs?: number;
+}
+
+/** The rep window the engine would see (leave start at p > 0.3 … back below 0.2 after passing 0.7), timed
+ *  with the engine's own repPhases(). Returns the duration of the exercise's lowering phase. */
+function lowerPhaseMs(ex: ExerciseDef, progress: number[]): number | undefined {
+  const start = progress.findIndex((p) => p > 0.3);
+  if (start < 0) return undefined;
+  let armed = false;
+  for (let i = start; i < progress.length; i++) {
+    if (progress[i] > 0.7) armed = true;
+    if (armed && progress[i] < 0.2) {
+      const ph = repPhases(progress.slice(start, i + 1).map((p, k) => ({ t: (k * 1000) / 30, p })));
+      return ex.lowerPhase === "out" ? ph.outMs : ph.returnMs;
+    }
+  }
+  return undefined;
 }
 
 function analyse(ex: ExerciseDef, split: "correct" | "incorrect"): { eps: EpisodeStats[]; subjects: number } {
@@ -61,7 +80,7 @@ function analyse(ex: ExerciseDef, split: "correct" | "incorrect"): { eps: Episod
       if (!sel.length) continue;
       checks[c.id] = c.op === ">" ? Math.max(...sel) : Math.min(...sel);
     }
-    out.push({ rest, excursion, checks });
+    out.push({ rest, excursion, checks, lowerMs: lowerPhaseMs(ex, progress) });
   }
   return { eps: out, subjects: new Set(episodes.map((e) => e.subject)).size };
 }
@@ -93,6 +112,8 @@ for (const ex of EXERCISES) {
     excursionP10: r1(q(peaks, 0.1)),
     excursionP90: r1(q(peaks, 0.9)),
     incorrectExcursionMedian: r1(median(badPeaks)),
+    lowerMsP10: Math.round(q(good.eps.flatMap((e) => (e.lowerMs === undefined ? [] : [e.lowerMs])), 0.1)),
+    lowerMsMedian: Math.round(median(good.eps.flatMap((e) => (e.lowerMs === undefined ? [] : [e.lowerMs])))),
     n: good.eps.length,
     subjects: good.subjects,
   };
@@ -104,6 +125,12 @@ for (const ex of EXERCISES) {
   md.push("| | rest (median) | excursion p10 | **excursion median** | excursion p90 |", "|---|---|---|---|---|");
   md.push(`| correct | ${entry.rest}° | ${entry.excursionP10}° | **${entry.excursion}°** | ${entry.excursionP90}° |`);
   md.push(`| incorrect | ${r1(median(bad.eps.map((e) => e.rest)))}° | ${r1(q(badPeaks, 0.1))}° | ${entry.incorrectExcursionMedian}° | ${r1(q(badPeaks, 0.9))}° |`, "");
+  const badLower = bad.eps.flatMap((e) => (e.lowerMs === undefined ? [] : [e.lowerMs]));
+  md.push(
+    `Lowering phase (${ex.lowerPhase === "out" ? "descent" : "return to start"}): correct p10 **${entry.lowerMsP10} ms**, median ${entry.lowerMsMedian} ms · incorrect p10 ${Math.round(q(badLower, 0.1))} ms, median ${Math.round(median(badLower))} ms` +
+      (ex.minLowerMs ? ` · "lower slowly" below ${ex.minLowerMs} ms.` : "."),
+    "",
+  );
   if (ex.checks.length) {
     md.push("| form check | threshold | correct p50 / p90 | incorrect p50 / p90 | flagged: correct | flagged: incorrect |", "|---|---|---|---|---|---|");
     for (const c of ex.checks) {

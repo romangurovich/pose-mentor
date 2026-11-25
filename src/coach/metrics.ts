@@ -38,7 +38,12 @@ export type MetricId =
   | "trunkSideBend"
   | "headTilt"
   | "hipShift"
-  | "heelLift";
+  | "heelLift"
+  | "shinLean"
+  | "kneesForward"
+  | "neckFlexion"
+  | "trunkTwist"
+  | "headTurn";
 
 export interface MetricInfo {
   label: string;
@@ -101,6 +106,28 @@ export const METRICS: Record<MetricId, MetricInfo> = {
       const [h, s] = trunkLine(c);
       return Math.abs(signedFromUp(h, s, c.facing));
     },
+  },
+  shinLean: {
+    label: "Shin angle",
+    unit: "°",
+    // shank vs. vertical, + when the knee travels forward past the ankle
+    fn: (c) => signedFromUp(P(c, "ankle"), P(c, "knee"), c.facing),
+  },
+  kneesForward: {
+    label: "Knees ahead of hips",
+    unit: "°",
+    // shin lean minus trunk lean: in a hip-dominant squat the shin and trunk stay roughly parallel;
+    // a large positive gap means the knees shot forward instead of the hips sitting back
+    fn: (c) => {
+      const [h, s] = trunkLine(c);
+      return signedFromUp(P(c, "ankle"), P(c, "knee"), c.facing) - signedFromUp(h, s, c.facing);
+    },
+  },
+  neckFlexion: {
+    label: "Head drop",
+    unit: "°",
+    // deviation of the shoulder→ear line from the trunk line (0° = head in line with the spine)
+    fn: (c) => 180 - angleAt(P(c, "hip"), P(c, "shoulder"), P(c, "ear")),
   },
   heelLift: {
     label: "Heel lift",
@@ -184,6 +211,21 @@ export const METRICS: Record<MetricId, MetricInfo> = {
     unit: "°",
     // ear line tilt toward the assessed side (that ear drops)
     fn: (c) => tiltDown(P(c, "ear"), P(c, "ear", other(c.side))),
+  },
+  trunkTwist: {
+    label: "Trunk rotation",
+    unit: "%",
+    // shoulder width as % of hip width; it shrinks when the chest rotates away from the camera (compare to baseline)
+    fn: (c) => (100 * dist(c.pts[LM.leftShoulder], c.pts[LM.rightShoulder])) / Math.max(1e-6, dist(c.pts[LM.leftHip], c.pts[LM.rightHip])),
+  },
+  headTurn: {
+    label: "Head rotation",
+    unit: "%",
+    // nose offset from the midpoint between the ears, % of ear width (0 = facing straight ahead)
+    fn: (c) => {
+      const ears = mid(c.pts[LM.leftEar], c.pts[LM.rightEar]);
+      return (100 * Math.abs(c.pts[LM.nose].x - ears.x)) / Math.max(1e-6, dist(c.pts[LM.leftEar], c.pts[LM.rightEar]));
+    },
   },
   hipShift: {
     label: "Hip shift",

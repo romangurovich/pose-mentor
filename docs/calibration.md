@@ -14,10 +14,13 @@ Primary metric **Knee flexion** (side view), 100 correct / 100 incorrect episode
 | correct | 2.6° | 113.6° | **131.9°** | 142.1° |
 | incorrect | 4.2° | 72.8° | 108.3° | 151.9° |
 
+Lowering phase (descent): correct p10 **397 ms**, median 500 ms · incorrect p10 333 ms, median 533 ms · "lower slowly" below 300 ms.
+
 | form check | threshold | correct p50 / p90 | incorrect p50 / p90 | flagged: correct | flagged: incorrect |
 |---|---|---|---|---|---|
 | Trunk lean | > 45° | 32.1 / 38.8 | 43.8 / 63.1 | 10% | 47% |
 | Heels lifting (Δ) | > 18% | 4 / 12.4 | 5.7 / 15.3 | 0% | 3% |
+| Knees driving forward | > 25° | -1.3 / 19.5 | -8 / 50 | 4% | 17% |
 
 ## Sit to Stand — m05 Sit to stand
 
@@ -30,10 +33,13 @@ _Coached in reverse: the start position is the recordings' end-range (seated)._
 | correct | 5.4° | 101.2° | **110.6°** | 120.8° |
 | incorrect | 7.4° | 109.8° | 125.8° | 142.4° |
 
+Lowering phase (return to start): correct p10 **333 ms**, median 400 ms · incorrect p10 400 ms, median 533 ms · "lower slowly" below 250 ms.
+
 | form check | threshold | correct p50 / p90 | incorrect p50 / p90 | flagged: correct | flagged: incorrect |
 |---|---|---|---|---|---|
 | Folding forward | > 40° | 24.1 / 30.1 | 35.7 / 51.3 | 1% | 39% |
 | Incomplete stand | > 20° | 12.2 / 15.8 | 18.8 / 26.7 | 7% | 40% |
+| Heels lifting (Δ) | > 18% | 6.4 / 13 | 9.5 / 13.7 | 1% | 1% |
 
 ## Standing Straight-Leg Raise — m06 Standing active straight leg raise
 
@@ -44,10 +50,13 @@ Primary metric **Hip flexion** (side view), 100 correct / 100 incorrect episodes
 | correct | -5.2° | 87.4° | **100.3°** | 117.2° |
 | incorrect | -4.1° | 56.7° | 85.6° | 116.1° |
 
+Lowering phase (return to start): correct p10 **300 ms**, median 400 ms · incorrect p10 300 ms, median 367 ms · "lower slowly" below 250 ms.
+
 | form check | threshold | correct p50 / p90 | incorrect p50 / p90 | flagged: correct | flagged: incorrect |
 |---|---|---|---|---|---|
 | Knee bending | > 20° | 33.4 / 109.2 | 31 / 71.1 | 88% | 83% |
 | Leaning back | < -20° | -10.2 / -18 | -4.5 / -18 | 4% | 6% |
+| Standing knee bent | > 28° | 15.2 / 25.1 | 19.4 / 40.3 | 4% | 34% |
 
 ## Hurdle Step — m02 Hurdle step
 
@@ -57,6 +66,8 @@ Primary metric **Hip flexion** (side view), 100 correct / 100 incorrect episodes
 |---|---|---|---|---|
 | correct | -4.7° | 77.7° | **93.7°** | 110.3° |
 | incorrect | -3.3° | 56° | 71.8° | 105.4° |
+
+Lowering phase (return to start): correct p10 **367 ms**, median 467 ms · incorrect p10 333 ms, median 433 ms · "lower slowly" below 300 ms.
 
 | form check | threshold | correct p50 / p90 | incorrect p50 / p90 | flagged: correct | flagged: incorrect |
 |---|---|---|---|---|---|
@@ -72,9 +83,13 @@ Primary metric **Knee flexion** (side view), 100 correct / 100 incorrect episode
 | correct | 7.6° | 70.7° | **91.5°** | 105.6° |
 | incorrect | 6.3° | 52.2° | 92.5° | 121.2° |
 
+Lowering phase (descent): correct p10 **333 ms**, median 467 ms · incorrect p10 300 ms, median 500 ms · "lower slowly" below 250 ms.
+
 | form check | threshold | correct p50 / p90 | incorrect p50 / p90 | flagged: correct | flagged: incorrect |
 |---|---|---|---|---|---|
 | Trunk lean | > 22° | 9.8 / 17.2 | 17.6 / 39.4 | 1% | 39% |
+| Front knee past toes | > 40° | 19.9 / 34 | 21.7 / 39 | 4% | 9% |
+| Front heel lifting (Δ) | > 18% | 9.7 / 12.8 | 9.4 / 15.9 | 0% | 3% |
 
 ## Shoulder Abduction — m07 Standing shoulder abduction
 
@@ -84,6 +99,8 @@ Primary metric **Arm elevation** (front view), 100 correct / 100 incorrect episo
 |---|---|---|---|---|
 | correct | 19.7° | 159.8° | **166.7°** | 179.6° |
 | incorrect | 20.4° | 107.9° | 140.3° | 162.8° |
+
+Lowering phase (return to start): correct p10 **467 ms**, median 567 ms · incorrect p10 367 ms, median 517 ms · "lower slowly" below 350 ms.
 
 | form check | threshold | correct p50 / p90 | incorrect p50 / p90 | flagged: correct | flagged: incorrect |
 |---|---|---|---|---|---|
@@ -100,6 +117,8 @@ Primary metric **Arm elevation** (front view), 100 correct / 100 incorrect episo
 | correct | 18.1° | 108° | **121.5°** | 141.3° |
 | incorrect | 19.3° | 59° | 92.8° | 121.5° |
 
+Lowering phase (return to start): correct p10 **333 ms**, median 400 ms · incorrect p10 300 ms, median 433 ms · "lower slowly" below 250 ms.
+
 | form check | threshold | correct p50 / p90 | incorrect p50 / p90 | flagged: correct | flagged: incorrect |
 |---|---|---|---|---|---|
 | Elbow bending | > 45° | 31.5 / 46.4 | 26.2 / 52.5 | 16% | 15% |
@@ -114,6 +133,8 @@ Primary metric **Shoulder extension** (side view), 100 correct / 100 incorrect e
 |---|---|---|---|---|
 | correct | -11° | 32.7° | **52.4°** | 68.3° |
 | incorrect | -3.6° | 10.9° | 44.2° | 100.6° |
+
+Lowering phase (return to start): correct p10 **367 ms**, median 433 ms · incorrect p10 300 ms, median 400 ms · "lower slowly" below 300 ms.
 
 | form check | threshold | correct p50 / p90 | incorrect p50 / p90 | flagged: correct | flagged: incorrect |
 |---|---|---|---|---|---|

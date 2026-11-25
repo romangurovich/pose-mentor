@@ -61,8 +61,10 @@ function run(exId: string, split: "correct" | "incorrect"): Result {
 }
 
 const pct = (x: number) => `${Math.round(100 * x)}%`;
-const flagged = (r: RepRecord) => !r.full || r.faults.some((f) => f !== "tempo");
-const rushed = (r: RepRecord) => r.faults.includes("tempo");
+/** timing cues (rushing, dropping on the way down) are coaching preferences, not UI-PRMD error labels */
+const TIMING = new Set(["tempo", "lowering"]);
+const flagged = (r: RepRecord) => !r.full || r.faults.some((f) => !TIMING.has(f));
+const rushed = (r: RepRecord) => r.faults.some((f) => TIMING.has(f));
 
 const md = [
   "# Engine evaluation on UI-PRMD",
@@ -71,10 +73,10 @@ const md = [
   "",
   "Each subject's 10 recorded reps are stitched into one continuous stream and played frame-by-frame through the",
   "same smoothing + `CoachEngine` the browser uses. *Flagged* = the rep received a form cue or fell short of the range goal",
-"(tempo \"slow down\" cues are reported separately — they are a coaching preference, not a UI-PRMD error label).",
+"(timing cues — \"slow down\" and \"lower slowly\" — are reported separately: they are a coaching preference, not a UI-PRMD error label).",
   "A rep that never reaches 70% of the goal isn't counted at all (the coach says \"go a little further\").",
   "",
-  "| Exercise | UI-PRMD | Reps counted (correct) | Flagged · correct | Counted (incorrect) | Flagged or not counted · incorrect | Tempo cue · correct | Mean score correct → incorrect |",
+  "| Exercise | UI-PRMD | Reps counted (correct) | Flagged · correct | Counted (incorrect) | Flagged or not counted · incorrect | Timing cue · correct | Mean score correct → incorrect |",
   "|---|---|---|---|---|---|---|---|",
 ];
 let totGood = 0, totGoodExp = 0;

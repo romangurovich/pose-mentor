@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ExerciseDef } from "../coach/types.ts";
-import { CoachEngine, type CoachState, type RepRecord } from "../coach/engine.ts";
+import { CoachEngine, faultInfo, type CoachState, type RepRecord } from "../coach/engine.ts";
 import { METRICS } from "../coach/metrics.ts";
 import { PoseDetector } from "../pose/detector.ts";
 import { PoseSmoother } from "../pose/filter.ts";
@@ -460,7 +460,7 @@ function CueBar({ st, flash, ex }: { st: CoachState; flash: RepRecord | null; ex
     tone = clean ? "good" : "minor";
     icon = clean ? <Icon.Check size={20} /> : <Icon.Alert size={20} />;
     title = clean ? `Rep ${ex.bothSides ? st.repsThisSide : flash.index}: great rep` : `Rep ${ex.bothSides ? st.repsThisSide : flash.index} counted`;
-    const fl = flash.faults.map((id) => (id === "tempo" ? "Too fast" : ex.checks.find((c) => c.id === id)?.label ?? id));
+    const fl = flash.faults.map((id) => (id === "tempo" ? "Too fast" : faultInfo(ex, id).label));
     sub = clean ? `Score ${flash.score} · ${Math.round(Math.abs(flash.peak))}° peak` : [...fl, ...(flash.full ? [] : ["Short of goal"])].join(" · ") + ` · score ${flash.score}`;
   } else if (st.goodToGo) {
     tone = "good";

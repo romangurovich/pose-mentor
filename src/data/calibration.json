@@ -1,0 +1,94 @@
+{
+  "source": "UI-PRMD — Vakanski et al., Data 2018, 3(1):2 (ODC PDDL). Kinect v2, segmented episodes.",
+  "generatedBy": "scripts/calibrate.ts",
+  "exercises": {
+    "squat": {
+      "movement": "m01 Deep squat",
+      "metric": "kneeFlexion",
+      "rest": 2.6,
+      "excursion": 131.9,
+      "excursionP10": 113.6,
+      "excursionP90": 142.1,
+      "incorrectExcursionMedian": 108.3,
+      "n": 100,
+      "subjects": 10
+    },
+    "sit-to-stand": {
+      "movement": "m05 Sit to stand",
+      "metric": "hipFlexion",
+      "rest": 5.4,
+      "excursion": 110.6,
+      "excursionP10": 101.2,
+      "excursionP90": 120.8,
+      "incorrectExcursionMedian": 125.8,
+      "n": 100,
+      "subjects": 10
+    },
+    "slr": {
+      "movement": "m06 Standing active straight leg raise",
+      "metric": "thighFlexion",
+      "rest": -5.2,
+      "excursion": 100.3,
+      "excursionP10": 87.4,
+      "excursionP90": 117.2,
+      "incorrectExcursionMedian": 85.6,
+      "n": 100,
+      "subjects": 10
+    },
+    "hurdle": {
+      "movement": "m02 Hurdle step",
+      "metric": "thighFlexion",
+      "rest": -4.7,
+      "excursion": 93.7,
+      "excursionP10": 77.7,
+      "excursionP90": 110.3,
+      "incorrectExcursionMedian": 71.8,
+      "n": 100,
+      "subjects": 10
+    },
+    "lunge": {
+      "movement": "m03 Inline lunge",
+      "metric": "kneeFlexion",
+      "rest": 7.6,
+      "excursion": 91.5,
+      "excursionP10": 70.7,
+      "excursionP90": 105.6,
+      "incorrectExcursionMedian": 92.5,
+      "n": 100,
+      "subjects": 10
+    },
+    "shoulder-abduction": {
+      "movement": "m07 Standing shoulder abduction",
+      "metric": "shoulderElevation",
+      "rest": 19.7,
+      "excursion": 166.7,
+      "excursionP10": 159.8,
+      "excursionP90": 179.6,
+      "incorrectExcursionMedian": 140.3,
+      "n": 100,
+      "subjects": 10
+    },
+    "scaption": {
+      "movement": "m10 Standing shoulder scaption",
+      "metric": "shoulderElevation",
+      "rest": 18.1,
+      "excursion": 121.5,
+      "excursionP10": 108,
+      "excursionP90": 141.3,
+      "incorrectExcursionMedian": 92.8,
+      "n": 100,
+      "subjects": 10
+    },
+    "shoulder-extension": {
+      "movement": "m08 Standing shoulder extension",
+      "metric": "shoulderExtension",
+      "rest": -11,
+      "excursion": 52.4,
+      "excursionP10": 32.7,
+      "excursionP90": 68.3,
+      "incorrectExcursionMedian": 44.2,
+      "n": 100,
+      "subjects": 10
+    }
+  }
+}

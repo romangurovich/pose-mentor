@@ -1,0 +1,8 @@
+node_modules
+dist
+public/models
+public/wasm
+*.local
+/data
+public/test-videos
+e2e-shots

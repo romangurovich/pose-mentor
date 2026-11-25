@@ -29,8 +29,9 @@ export interface FormCheck {
   metric: MetricId;
   op: ">" | "<";
   threshold: number;
-  /** compare against the value captured in the start position instead of the absolute value */
-  relative?: boolean;
+  /** compare against the value captured in the start position instead of the absolute value:
+   *  `true` = difference in the metric's unit, `"percent"` = % change from the start value */
+  relative?: boolean | "percent";
   phase: CheckPhase;
   severity: "major" | "minor";
   /** joints to highlight on the skeleton; `side: "other"` means the non-assessed side */

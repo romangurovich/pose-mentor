@@ -42,8 +42,8 @@ export type MetricId =
   | "shinLean"
   | "kneesForward"
   | "neckFlexion"
-  | "trunkTwist"
-  | "headTurn";
+  | "headTurn"
+  | "torsoLength";
 
 export interface MetricInfo {
   label: string;
@@ -140,7 +140,11 @@ export const METRICS: Record<MetricId, MetricInfo> = {
   shoulderFlexion: {
     label: "Shoulder flexion",
     unit: "°",
-    fn: (c) => signedFromDown(P(c, "shoulder"), P(c, "elbow"), c.facing),
+    // unwrapped past vertical: an arm slightly behind the head reads 185°, not −175° (extension never gets near −120°)
+    fn: (c) => {
+      const v = signedFromDown(P(c, "shoulder"), P(c, "elbow"), c.facing);
+      return v < -120 ? v + 360 : v;
+    },
   },
   shoulderExtension: {
     label: "Shoulder extension",
@@ -212,12 +216,6 @@ export const METRICS: Record<MetricId, MetricInfo> = {
     // ear line tilt toward the assessed side (that ear drops)
     fn: (c) => tiltDown(P(c, "ear"), P(c, "ear", other(c.side))),
   },
-  trunkTwist: {
-    label: "Trunk rotation",
-    unit: "%",
-    // shoulder width as % of hip width; it shrinks when the chest rotates away from the camera (compare to baseline)
-    fn: (c) => (100 * dist(c.pts[LM.leftShoulder], c.pts[LM.rightShoulder])) / Math.max(1e-6, dist(c.pts[LM.leftHip], c.pts[LM.rightHip])),
-  },
   headTurn: {
     label: "Head rotation",
     unit: "%",
@@ -226,6 +224,13 @@ export const METRICS: Record<MetricId, MetricInfo> = {
       const ears = mid(c.pts[LM.leftEar], c.pts[LM.rightEar]);
       return (100 * Math.abs(c.pts[LM.nose].x - ears.x)) / Math.max(1e-6, dist(c.pts[LM.leftEar], c.pts[LM.rightEar]));
     },
+  },
+  torsoLength: {
+    label: "Trunk length",
+    unit: "%",
+    // shoulder-midpoint → hip-midpoint distance (% of frame height). Seen from the front it shortens when the trunk
+    // folds forward but not in a true side bend — use as a % change from the start position
+    fn: (c) => 100 * dist(midShoulder(c), midHip(c)),
   },
   hipShift: {
     label: "Hip shift",

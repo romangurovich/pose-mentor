@@ -9,7 +9,7 @@ A rep that never reaches 70% of the goal isn't counted at all (the coach says "g
 
 | Exercise | UI-PRMD | Reps counted (correct) | Flagged · correct | Counted (incorrect) | Flagged or not counted · incorrect | Timing cue · correct | Mean score correct → incorrect |
 |---|---|---|---|---|---|---|---|
-| Squat | m01 Deep squat | 98/100 | 11% | 87/100 | 73% | 1% | 97 → 83 |
+| Squat | m01 Deep squat | 98/100 | 11% | 87/100 | 68% | 1% | 97 → 84 |
 | Sit to Stand | m05 Sit to stand | 87/90 | 8% | 90/90 | 7% | 1% | 99 → 99 |
 | Standing Straight-Leg Raise | m06 Standing active straight leg raise | 100/100 | 59% | 90/100 | 88% | 8% | 85 → 75 |
 | Hurdle Step | m02 Hurdle step | 100/100 | 5% | 92/100 | 68% | 2% | 99 → 86 |

@@ -81,6 +81,13 @@ describe("geometry", () => {
     expect(tiltDown({ x: 0, y: 1 }, { x: 1, y: 0 })).toBeCloseTo(45);
   });
 
+  it("keeps shoulder flexion continuous past vertical (no wrap to -180°)", () => {
+    for (const arm of [170, 185, 195]) {
+      const f = sidePose(0, { arm });
+      expect(METRICS.shoulderFlexion.fn({ pts: f.pts, vis: f.vis, side: "right", facing: 1 })).toBeCloseTo(arm, 0);
+    }
+  });
+
   it("computes clinical knee flexion from a synthetic pose", () => {
     const f = sidePose(0, { knee: 90 });
     const v = METRICS.kneeFlexion.fn({ pts: f.pts, vis: f.vis, side: "right", facing: 1 });

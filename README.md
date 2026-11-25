@@ -18,7 +18,7 @@ Open the URL in Chrome, Edge or Safari, pick an exercise, set up the camera as t
 | **Exercises** | 15 rehab staples: squat, sit-to-stand, straight-leg raise, hurdle step, inline lunge, hip abduction, wall sit, quad/hamstring stretches, shoulder abduction/scaption/flexion/extension, side bend, neck side-stretch |
 | **Coaching** | rep counting and hold timer, range-of-motion goal, 2–4 form checks per exercise, tempo and lower-slowly (eccentric control) cues, bounce detection in stretches, auto side-detection and side switching, framing and orientation guidance, voice and chime |
 | **Model** | MediaPipe Pose Landmarker (BlazePose GHUM, 33 landmarks), pretrained and used as-is. Lite, full and heavy variants; GPU with CPU fallback |
-| **Public data** | [UI-PRMD](https://doi.org/10.3390/data3010002) rehab-movement recordings for range calibration and evaluation; AAOS normative joint ranges for the rest |
+| **Public data** | [UI-PRMD](https://doi.org/10.3390/data3010002) rehab-movement recordings for range calibration and evaluation; [Rehab-Pile](https://msd-irimas.github.io/pages/DeepRehabPile/) (IntelliRehabDS, KIMORE, KERAAL) to cross-check shoulder flexion, hip abduction, side bend, and patients' squats; AAOS normative joint ranges for the rest |
 
 ## How it works
 
@@ -77,7 +77,7 @@ each performed correctly and in a deliberately "non-optimal" way, recorded with 
 
 | Exercise | Reps counted (correct) | Correct reps flagged | Incorrect reps flagged or not counted |
 |---|---|---|---|
-| Squat | 98/100 | 11% | 73% |
+| Squat | 98/100 | 11% | 68% |
 | Hurdle step | 100/100 | 5% | 68% |
 | Inline lunge | 96/100 | 13% | 56% |
 | Shoulder abduction | 99/100 | 0% | 50% |
@@ -93,10 +93,32 @@ Overall rep-count recall on correct reps is **94%**. Known weak spots, kept visi
 - **Shoulder extension:** several subjects switched arms between reps, and the coach locks onto one arm per set.
 - **Sit-to-stand:** the incorrect reps (balance and weight-shift issues) aren't visible to these 2D checks.
 
-The thresholds for the 7 non-UI-PRMD exercises, and the new checks on those exercises (wall-sit shin and back position,
-quad-stretch arch, hamstring-stretch head drop, hip-abduction hip hike, side-bend rotation, neck-stretch head turn), come
-from AAOS normative ranges and standard clinical cues, not from data.
-Each one's `basis` is shown in the app under *"What I check, and why these numbers"*.
+**Rehab-Pile** (Ismail-Fawaz et al., FG 2026) bundles several public rehab-skeleton datasets with therapist labels or
+clinical scores, including patients rather than only healthy adults. `scripts/fetch_rehabpile.py` downloads only the parts
+that match an exercise here. It reads the NumPy files without running pickled code. `scripts/lib/rehabpile.ts` converts each
+skeleton to the UI-PRMD joint layout, so the same virtual webcam and metric code measure it.
+`node scripts/calibrate-rehabpile.ts` writes **[docs/calibration-rehabpile.md](docs/calibration-rehabpile.md)**, which compares
+good and poor recordings. What it changed:
+
+- **Shoulder flexion** (IntelliRehabDS, correct vs. incorrect): the 160° reference is confirmed (correct reps reach a median of 166°), and
+  the arch check separates well (4% of correct vs. 26% of incorrect flagged). It also exposed a bug: the flexion angle wrapped
+  from +180° to −180° once the arm passed vertical, which would have cut overhead reps short. The elbow check can't be validated
+  here (Kinect loses elbows when the arm swings toward a front-facing sensor), so its limit is a loose 45°.
+- **Shoulder abduction** (IntelliRehabDS): the elbow limit is now 35° (8% of correct vs. 38% of incorrect flagged) and the shrug limit is −30%, so patients'
+  correct reps aren't flagged.
+- **Hip abduction** (IntelliRehabDS side taps): sway, knee and stance checks stay quiet on correct reps; hip-hike limit −10°.
+- **Side bend** (KIMORE clinical scores, KERAAL error classes): reference range 20° (good bends: median 20.5°). The
+  "trunk rotating" check was **removed**: it fired on almost every good bend, because raising the arms overhead pulls the shoulder points
+  inward. It's replaced by a forward-fold check (trunk looks ≥ 15% shorter from the front). Hip-shift limit raised to 75% of hip width, because good
+  benders shift more than poor ones.
+- **Squat** (KIMORE patients): "sit your hips back" limit raised to 40° (7% of good vs. 20% of poor squats flagged). This costs
+  some sensitivity on UI-PRMD's acted-out bad squats (73% → 68% caught).
+
+Rehab-Pile resamples recordings to a fixed length, so it says nothing about timing. The Elderly Home Exercise set in it was dropped:
+its score scale isn't documented, and its best-scored bends moved the least.
+
+No public data was found for the wall sit, quad, hamstring and neck stretches. Their thresholds, and the new checks on hip abduction and side bend, still come from
+AAOS normative ranges and standard clinical cues. Each check's `basis` is shown in the app under *"What I check, and why these numbers"*.
 
 ## Scripts
 
@@ -107,6 +129,8 @@ Each one's `basis` is shown in the app under *"What I check, and why these numbe
 | `npm run data:fetch` | download UI-PRMD Kinect data into `data/uiprmd` (≈200 MB) |
 | `npm run data:calibrate` | regenerate `src/data/calibration.json` + `docs/calibration.md` |
 | `npm run data:evaluate` | regenerate `docs/evaluation.md` |
+| `npm run data:fetch-rehabpile` | download the matching Rehab-Pile subsets into `data/rehabpile` (≈130 MB, needs numpy) |
+| `npm run data:calibrate-rehabpile` | regenerate `docs/calibration-rehabpile.md` |
 | `node scripts/e2e-smoke.mjs` | headless Chromium end-to-end: library → setup → live session on a real exercise video → summary (needs `npm run dev`, `npx playwright install chromium`, and a clip in `public/test-videos/`) |
 
 **Deep link for demos and tests:** `/?exercise=squat&video=/clip.webm&goal=0.8&reps=5&voice=0&delegate=CPU` starts a session

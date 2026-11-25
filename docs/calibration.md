@@ -20,7 +20,7 @@ Lowering phase (descent): correct p10 **397 ms**, median 500 ms · incorrect p10
 |---|---|---|---|---|---|
 | Trunk lean | > 45° | 32.1 / 38.8 | 43.8 / 63.1 | 10% | 47% |
 | Heels lifting (Δ) | > 18% | 4 / 12.4 | 5.7 / 15.3 | 0% | 3% |
-| Knees driving forward | > 25° | -1.3 / 19.5 | -8 / 50 | 4% | 17% |
+| Knees driving forward | > 40° | -1.3 / 19.5 | -8 / 50 | 2% | 11% |
 
 ## Sit to Stand — m05 Sit to stand
 
@@ -104,9 +104,9 @@ Lowering phase (return to start): correct p10 **467 ms**, median 567 ms · incor
 
 | form check | threshold | correct p50 / p90 | incorrect p50 / p90 | flagged: correct | flagged: incorrect |
 |---|---|---|---|---|---|
-| Elbow bending | > 30° | 18.8 / 25.9 | 20.6 / 31.1 | 3% | 12% |
+| Elbow bending | > 35° | 18.8 / 25.9 | 20.6 / 31.1 | 0% | 4% |
 | Leaning sideways (Δ) | > 10° | 0.7 / 1.8 | 3.1 / 14.3 | 0% | 19% |
-| Shrugging (Δ) (≤55% of range) | < -25% | -13.7 / -20.5 | -13 / -23 | 2% | 9% |
+| Shrugging (Δ) (≤55% of range) | < -30% | -13.7 / -20.5 | -13 / -23 | 0% | 5% |
 
 ## Shoulder Scaption — m10 Standing shoulder scaption
 

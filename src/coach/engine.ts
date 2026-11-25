@@ -432,7 +432,10 @@ export class CoachEngine {
       let value = 0;
       if (this.checkActive(c, p)) {
         value = this.metric(c.metric, f, side, facing);
-        if (c.relative) value -= this.baseline.get(`${c.metric}:${side}`) ?? value;
+        if (c.relative) {
+          const base = this.baseline.get(`${c.metric}:${side}`) ?? value;
+          value = c.relative === "percent" ? (100 * (value - base)) / Math.max(1e-6, Math.abs(base)) : value - base;
+        }
         raw = c.op === ">" ? value > c.threshold : value < c.threshold;
       }
       if (raw !== tr.raw) {
@@ -462,7 +465,7 @@ export class CoachEngine {
           severity: c.severity,
           value,
           threshold: c.threshold,
-          unit: METRICS[c.metric].unit,
+          unit: c.relative === "percent" ? "%" : METRICS[c.metric].unit,
         });
       }
     }

@@ -167,7 +167,7 @@ export function SetupSheet({ ex, onClose, onStart }: Props) {
                   <span>
                     {METRICS[c.metric].label} {c.relative ? "change " : ""}
                     {c.op} {c.threshold}
-                    {METRICS[c.metric].unit}. {c.basis}
+                    {c.relative === "percent" ? "%" : METRICS[c.metric].unit}. {c.basis}
                   </span>
                 </div>
               ))}

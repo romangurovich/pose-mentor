@@ -462,6 +462,9 @@ function CueBar({ st, flash, ex }: { st: CoachState; flash: RepRecord | null; ex
     title = clean ? `Rep ${ex.bothSides ? st.repsThisSide : flash.index}: great rep` : `Rep ${ex.bothSides ? st.repsThisSide : flash.index} counted`;
     const fl = flash.faults.map((id) => (id === "tempo" ? "Too fast" : ex.checks.find((c) => c.id === id)?.label ?? id));
     sub = clean ? `Score ${flash.score} · ${Math.round(Math.abs(flash.peak))}° peak` : [...fl, ...(flash.full ? [] : ["Short of goal"])].join(" · ") + ` · score ${flash.score}`;
+  } else if (st.goodToGo) {
+    tone = "good";
+    icon = <Icon.Check size={20} />;
   } else if (st.status === "active" && ex.kind === "reps") {
     sub = st.progress >= 0.95 ? "Goal reached — return with control" : `Aim for the goal line (${Math.round(st.goalValue)}°)`;
   } else if (st.status === "active" && ex.kind === "hold" && st.hold?.inPosition) {

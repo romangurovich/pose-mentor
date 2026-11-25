@@ -91,6 +91,10 @@ export interface CoachState {
   highlight: Map<number, "major" | "minor">;
   formScore: number | null;
   missing: string[];
+  /** every required joint is visible and the orientation is right */
+  inFrame: boolean;
+  /** briefly true right after framing is confirmed, to show a "good to go" banner */
+  goodToGo: boolean;
   events: CoachEvent[];
 }
 
@@ -112,6 +116,10 @@ const FAULT_ON_MS = 220;
 const FAULT_OFF_MS = 350;
 const SAY_GAP_MS = 2600;
 const SAME_CUE_GAP_MS = 7000;
+/** how long framing must stay good before announcing "good to go" */
+const FRAME_OK_MS = 400;
+/** how long the "good to go" banner stays up */
+const GOOD_TO_GO_SHOW_MS = 2500;
 
 interface FaultTrack {
   on: boolean;
@@ -167,6 +175,10 @@ export class CoachEngine {
   private switchSince = 0;
   /** when the person was last seen (brief detector dropouts shouldn't interrupt coaching) */
   private lastSeen: number | null = null;
+  // framing confirmation
+  private frameOkSince: number | null = null;
+  private framedAnnounced = false;
+  private goodToGoAt: number | null = null;
 
   constructor(ex: ExerciseDef, opts: EngineOptions) {
     this.ex = ex;
@@ -361,6 +373,28 @@ export class CoachEngine {
     }
   }
 
+  // ───────────────────────────────────────────── framing confirmation ─────────────────────────────────────────────
+
+  private resetFraming() {
+    this.frameOkSince = null;
+    this.framedAnnounced = false;
+    this.goodToGoAt = null;
+  }
+
+  /** once everything needed is in view (and stays so briefly), tell the person they're good to go */
+  private confirmFraming(t: number) {
+    this.frameOkSince ??= t;
+    if (this.framedAnnounced || t - this.frameOkSince < FRAME_OK_MS) return;
+    this.framedAnnounced = true;
+    this.goodToGoAt = t;
+    const next = this.ex.kind === "reps" ? "start when you're ready" : "ease into the stretch";
+    this.say(`I can see everything. You're good to go — ${next}.`, "info", t, "good-to-go-" + this.sideIndex, true);
+  }
+
+  private goodToGo(t: number): boolean {
+    return this.goodToGoAt !== null && t - this.goodToGoAt < GOOD_TO_GO_SHOW_MS;
+  }
+
   // ───────────────────────────────────────────── side completion ─────────────────────────────────────────────
 
   private finishSide(t: number) {
@@ -377,6 +411,7 @@ export class CoachEngine {
       this.baseline.clear();
       this.clearFaults();
       this.switchSince = t;
+      this.resetFraming();
       this.setStatus("switch", t);
       this.say(`Great work. Now switch to your ${this.sideWord(next)} side.`, "info", t, "switch", true);
     } else {
@@ -401,6 +436,7 @@ export class CoachEngine {
         return this.snapshot(null, [], 0, 0, 1, []); // hold the current state through a short dropout
       }
       this.setStatus("searching", t);
+      this.resetFraming();
       this.moving = false;
       this.inPosition = false;
       this.clearFaults();
@@ -424,6 +460,7 @@ export class CoachEngine {
       this.inPosition = false;
       this.restSince = null;
       this.armed = false;
+      this.resetFraming();
       this.clearFaults();
       if (this.status === s) {
         const text = s === "framing" ? `Step back so I can see your ${g!.missing.join(" and ")}` : this.ex.view === "side" ? "Turn sideways to the camera" : "Face the camera";
@@ -439,6 +476,9 @@ export class CoachEngine {
       return this.snapshot(f, [], value, p, facing, []);
     }
 
+    if (!g) this.confirmFraming(t);
+    else this.frameOkSince = null;
+
     return this.ex.kind === "reps" ? this.updateReps(f, side, facing, value, p, t) : this.updateHold(f, side, facing, value, p, t, dt);
   }
 
@@ -451,7 +491,7 @@ export class CoachEngine {
         this.updateBaseline(f, facing);
         if (t - this.restSince > 350 && !this.armed) {
           this.armed = true;
-          if (this.status !== "active") this.say(this.reps.length || this.sideIndex ? "Ready" : "Ready when you are", "info", t, "ready-" + this.sideIndex);
+          if (this.status !== "active" && this.framedAnnounced && !this.goodToGo(t)) this.say(this.reps.length || this.sideIndex ? "Ready" : "Ready when you are", "info", t, "ready-" + this.sideIndex);
         }
       } else this.restSince = null;
       if (this.status !== "active") this.setStatus("ready", t);
@@ -596,6 +636,8 @@ export class CoachEngine {
       case "orient":
         return ex.view === "side" ? ["Turn sideways", "This move is judged from the side."] : ["Face the camera", "This move is judged from the front."];
       case "ready":
+        if (this.goodToGo(this.lastT ?? 0))
+          return [`You're good to go${sideTxt}`, ex.kind === "reps" ? "I can see everything I need — start when you're ready." : "I can see everything I need — ease into the stretch."];
         if (ex.kind === "reps" && !this.armed) return [`Return to the start${sideTxt}`, "Settle into the starting position."];
         return ex.kind === "reps" ? [`Ready${sideTxt}`, "Begin when you are — I'll count your reps."] : [`Get into the stretch${sideTxt}`, "Ease into position; the timer starts when you get there."];
       case "active":
@@ -651,6 +693,8 @@ export class CoachEngine {
       highlight,
       formScore,
       missing,
+      inFrame: this.framedAnnounced,
+      goodToGo: this.status === "ready" && this.goodToGo(this.lastT ?? 0),
       events: this.events,
     };
   }

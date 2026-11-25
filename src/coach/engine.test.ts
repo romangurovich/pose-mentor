@@ -137,6 +137,32 @@ describe("CoachEngine · reps", () => {
     expect(st.status).toBe("framing");
     expect(st.missing).toContain("feet");
   });
+
+  it("says you're good to go once everything is in frame", () => {
+    const engine = new CoachEngine(squat, { rangeGoal: 0.8 });
+    const feet = [LM.leftAnkle, LM.rightAnkle, LM.leftHeel, LM.rightHeel, LM.leftFootIndex, LM.rightFootIndex];
+    const events: CoachEvent[] = [];
+    let st = engine.update(null);
+    let t = 0;
+    for (let i = 0; i < 20; i++) {
+      const f = sidePose((t += 33));
+      for (const j of feet) f.vis[j] = 0.1;
+      st = engine.update(f);
+      events.push(...st.events);
+    }
+    expect(st.inFrame).toBe(false);
+    expect(events.some((e) => e.type === "say" && /good to go/.test(e.text))).toBe(false);
+    for (let i = 0; i < 30; i++) {
+      st = engine.update(sidePose((t += 33)));
+      events.push(...st.events);
+      if (i === 20) expect(st.goodToGo).toBe(true);
+    }
+    const said = events.flatMap((e) => (e.type === "say" ? [e.text] : []));
+    expect(said.filter((x) => /good to go/.test(x))).toHaveLength(1);
+    expect(said).not.toContain("Ready when you are");
+    expect(st.inFrame).toBe(true);
+    expect(st.status).toBe("ready");
+  });
 });
 
 describe("CoachEngine · holds", () => {

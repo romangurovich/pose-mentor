@@ -131,6 +131,7 @@ export const ru: Locale = {
     settings: {
       language: "Язык",
       voice: "Голос тренера",
+      voiceSystem: "Для этого выбора пока нет естественного голоса — используется голос устройства.",
       female: "Женский",
       male: "Мужской",
       preview: "Прослушать",

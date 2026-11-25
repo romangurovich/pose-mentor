@@ -13,6 +13,7 @@ import type { SessionConfig } from "./SetupSheet.tsx";
 import type { SessionResult } from "./history.ts";
 import { useI18n } from "./i18n.tsx";
 import { exerciseText, fmtValue, metricLabel } from "../i18n/index.ts";
+import { sessionPhrases } from "../tts/phrases.ts";
 import type { Locale } from "../i18n/types.ts";
 
 interface Props {
@@ -48,7 +49,8 @@ export function Session({ ex, cfg, onExit }: Props) {
   const [fileSrc, setFileSrc] = useState<string | null>(videoParam());
 
   const engineRef = useRef<CoachEngine>(new CoachEngine(ex, { rangeGoal: cfg.rangeGoal, reps: cfg.reps, holdSeconds: cfg.holdSeconds, startSide: cfg.startSide, locale }));
-  const voiceRef = useRef(new VoiceCoach(locale, gender));
+  const voiceRef = useRef<VoiceCoach>(null!);
+  voiceRef.current ??= new VoiceCoach(locale, gender);
   const startedAt = useRef(Date.now());
   const mirrorRef = useRef(mirror);
   const pausedRef = useRef(paused);
@@ -56,6 +58,11 @@ export function Session({ ex, cfg, onExit }: Props) {
   const stRef = useRef<CoachState | null>(null);
   mirrorRef.current = mirror;
   pausedRef.current = paused;
+
+  // decode this session's likely voice clips in the background so cues play without delay
+  useEffect(() => {
+    if (cfg.voice) voiceRef.current.prepare(sessionPhrases(locale, ex, cfg.reps));
+  }, [locale, ex, cfg.voice, cfg.reps]);
 
   useEffect(() => {
     voiceRef.current.enabled = voiceOn;

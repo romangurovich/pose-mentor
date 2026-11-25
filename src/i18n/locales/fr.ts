@@ -131,6 +131,7 @@ export const fr: Locale = {
     settings: {
       language: "Langue",
       voice: "Voix du coach",
+      voiceSystem: "Pas encore de voix naturelle pour ce choix : la voix de l'appareil est utilisée.",
       female: "Féminine",
       male: "Masculine",
       preview: "Écouter un extrait",
@@ -608,4 +609,6 @@ export const fr: Locale = {
     female: [/am[eé]lie|audrey|aur[eé]lie|marie|virginie|chantal/i, /hortense|julie|denise|elise|eloise|vivienne/i, /google français/i, /flo|sandy|shelley|grandma/i],
     male: [/thomas|nicolas|jacques|antoine/i, /paul|henri|claude|remy|r[eé]my|alain/i, /eddy|reed|rocko|grandpa/i],
   },
+
+  kokoro: { female: "ff_siwis", espeak: "roa/fr" },
 };

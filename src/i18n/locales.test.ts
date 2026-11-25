@@ -4,6 +4,7 @@ import { METRICS } from "../coach/metrics.ts";
 import { CoachEngine, faultInfo, type CoachEvent } from "../coach/engine.ts";
 import { LM, NUM_LANDMARKS, type PoseFrame, type Vec2 } from "../pose/landmarks.ts";
 import { LOCALES, exerciseText, getLocale, matchLocale } from "./index.ts";
+import { kokoroVoiceId } from "../ui/voice.ts";
 
 /** every string a catalog can produce: call functions with representative arguments */
 function strings(v: unknown, out: string[] = []): string[] {
@@ -64,6 +65,18 @@ describe("gender-neutral address", () => {
       expect(all.filter((s) => re.test(s))).toEqual([]);
     });
   }
+});
+
+describe("Kokoro voices", () => {
+  it("maps each language and gender to a Kokoro voice where Kokoro has one", () => {
+    const v = (id: string, g: "female" | "male") => kokoroVoiceId(getLocale(id), g);
+    expect([v("en", "female"), v("en", "male")]).toEqual(["af_heart", "am_michael"]);
+    expect([v("es", "female"), v("es", "male")]).toEqual(["ef_dora", "em_alex"]);
+    expect([v("fr", "female"), v("fr", "male")]).toEqual(["ff_siwis", null]); // Kokoro has no male French voice
+    expect([v("pt", "female"), v("pt", "male")]).toEqual(["pf_dora", "pm_alex"]);
+    for (const id of ["de", "ru"]) expect([v(id, "female"), v(id, "male")]).toEqual([null, null]); // no Kokoro voices
+    expect(getLocale("en").kokoro?.espeak).toBeUndefined(); // English uses kokoro-js's own phonemizer
+  });
 });
 
 describe("lookups", () => {

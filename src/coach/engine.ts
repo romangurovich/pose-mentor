@@ -104,7 +104,8 @@ export interface CoachState {
   events: CoachEvent[];
 }
 
-const JOINT_WORDS: Record<Joint, JointWord> = {
+/** which body-part word the coach uses for each joint ("I can't see your feet") */
+export const JOINT_WORDS: Record<Joint, JointWord> = {
   shoulder: "shoulders",
   elbow: "elbows",
   wrist: "hands",

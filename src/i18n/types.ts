@@ -99,6 +99,8 @@ export interface UiStrings {
   settings: {
     language: string;
     voice: string;
+    /** shown when this language/gender has no Kokoro voice and the device voice is used */
+    voiceSystem: string;
     female: string;
     male: string;
     preview: string;
@@ -267,4 +269,10 @@ export interface Locale {
   exercises: Record<string, ExerciseText>;
   /** system voices to prefer for each gender, tried in order (Web Speech API exposes names, not genders) */
   voices: Record<VoiceGender, RegExp[]>;
+  /**
+   * Kokoro-82M voices for this language. Their audio is pre-generated at build time (scripts/build-voices.ts); a
+   * language or gender without one uses the device voice. `espeak` = eSpeak-NG voice used at build time to
+   * phonemize non-English text (English uses kokoro-js's own phonemizer).
+   */
+  kokoro?: { female?: string; male?: string; espeak?: string };
 }

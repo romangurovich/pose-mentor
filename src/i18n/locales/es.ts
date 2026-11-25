@@ -92,6 +92,7 @@ export const es: Locale = {
     settings: {
       language: "Idioma",
       voice: "Voz de la guía",
+      voiceSystem: "Aún no hay voz natural para esta opción: se usa la voz del dispositivo.",
       female: "Femenina",
       male: "Masculina",
       preview: "Escuchar muestra",
@@ -503,4 +504,6 @@ export const es: Locale = {
     female: [/m[oó]nica|paulina|marisol|soledad|ang[eé]lica|isabela/i, /helena|sabina|elvira|dalia|laura|elena/i, /google español/i, /flo|sandy|shelley|grandma/i],
     male: [/jorge|juan|diego|carlos/i, /pablo|ra[uú]l|[aá]lvaro|gonzalo|alonso/i, /eddy|reed|rocko|grandpa/i],
   },
+
+  kokoro: { female: "ef_dora", male: "em_alex", espeak: "roa/es" },
 };

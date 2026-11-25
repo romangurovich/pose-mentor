@@ -52,6 +52,20 @@ webcam ─► MediaPipe Pose (WASM/WebGL) ─► 33 landmarks ─► One Euro fi
   The female/male setting picks the coach's *voice* from each locale's list of known system voices (browsers expose voice
   names, not genders). The clinical provenance notes ("why these numbers") stay in English on purpose, and the app says so.
   Settings (language, voice, theme: system/light/dark) live in the nav. Deep link: `?lang=de&voice=male&theme=light`.
+- **`src/tts/` + `scripts/build-voices.ts`**: the coach's natural voice is [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M)
+  (Apache-2.0), **pre-generated at build time**. The coach says a fixed set of phrases (`src/tts/phrases.ts`): counts, every
+  check's cue, short reminder and "Better — …", framing lines for each combination of missing body parts, and so on. `npm run
+  voices` renders each phrase in each Kokoro voice with native ONNX Runtime, trims and levels it, and writes MP3s plus a manifest
+  to `public/voice/` (≈1,400 clips, 16 MB; git-ignored). `npm run build` runs it first, so every build ships fresh clips; it's
+  incremental, so only the first run (model download + ~15 min of synthesis) is slow — cache `data/kokoro` and `public/voice` in CI.
+  In `npm run dev` without clips, the coach just uses the device voice. The app decodes and plays the clips, so cues are instant, no model is downloaded, and the
+  voice sounds the same on every device. A phrase without a clip, and languages Kokoro doesn't cover (German, Russian, male
+  French), use the device's speech voices. A test drives the engine through full sessions in every language and fails if it says
+  anything missing from the phrase list, so the clips can't silently fall out of date.
+  Voices: English `af_heart` / `am_michael`, Spanish `ef_dora` / `em_alex`, French `ff_siwis`, Portuguese (BR) `pf_dora` /
+  `pm_alex`. English is phonemized by kokoro-js; Spanish, French and Portuguese by **eSpeak-NG (GPL-3.0), used only by the
+  build script**, not shipped with the app. Why not run Kokoro in the browser? On WebGPU (fast) it produced degraded audio in
+  testing, and on WASM it was ~2.5× slower than real time.
 - **`src/ui/`**: React UI. `overlay.ts` draws the skeleton, fault highlights and live angle arc on a canvas. `demo/figure.ts`
   is a small forward-kinematics stick figure that animates every exercise demo from two joint-angle poses.
 
@@ -131,13 +145,14 @@ AAOS normative ranges and standard clinical cues. Each check's `basis` is shown 
 
 | | |
 |---|---|
-| `npm run dev` / `build` / `preview` | app (asset setup runs automatically) |
+| `npm run dev` / `build` / `preview` | app (asset setup runs automatically; `build` also generates the voice clips) |
 | `npm test` | unit tests for geometry and the engine (reps, faults, shallow reps, tempo, lowering speed, gates, holds, bouncing) |
 | `npm run data:fetch` | download UI-PRMD Kinect data into `data/uiprmd` (≈200 MB) |
 | `npm run data:calibrate` | regenerate `src/data/calibration.json` + `docs/calibration.md` |
 | `npm run data:evaluate` | regenerate `docs/evaluation.md` |
 | `npm run data:fetch-rehabpile` | download the matching Rehab-Pile subsets into `data/rehabpile` (≈130 MB, needs numpy) |
 | `npm run data:calibrate-rehabpile` | regenerate `docs/calibration-rehabpile.md` |
+| `npm run voices` | generate the coach's voice clips in `public/voice/` (also run by `build`; run it by hand to hear changed coaching text in `dev`) (downloads the 326 MB Kokoro model into `data/` on first run) |
 | `node scripts/e2e-smoke.mjs` | headless Chromium end-to-end: library → setup → live session on a real exercise video → summary (needs `npm run dev`, `npx playwright install chromium`, and a clip in `public/test-videos/`) |
 
 **Deep link for demos and tests:** `/?exercise=squat&video=/clip.webm&goal=0.8&reps=5&voice=0&delegate=CPU` starts a session

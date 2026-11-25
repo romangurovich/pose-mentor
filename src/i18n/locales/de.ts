@@ -124,6 +124,7 @@ export const de: Locale = {
     settings: {
       language: "Sprache",
       voice: "Stimme des Coachs",
+      voiceSystem: "Für diese Auswahl gibt es noch keine natürliche Stimme – die Gerätestimme wird verwendet.",
       female: "Weiblich",
       male: "Männlich",
       preview: "Hörprobe abspielen",

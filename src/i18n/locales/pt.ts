@@ -84,6 +84,7 @@ export const pt: Locale = {
     settings: {
       language: "Idioma",
       voice: "Voz de orientação",
+      voiceSystem: "Ainda não há voz natural para esta opção — usando a voz do dispositivo.",
       female: "Feminina",
       male: "Masculina",
       preview: "Ouvir exemplo",
@@ -500,4 +501,6 @@ export const pt: Locale = {
     female: [/luciana|joana|fernanda|catarina/i, /maria|francisca|thalita|leticia|let[ií]cia|yara/i, /google português/i, /flo|sandy|shelley|grandma/i],
     male: [/felipe|ricardo|eduardo/i, /daniel|ant[oô]nio|fabio|f[aá]bio|julio|j[uú]lio|humberto/i, /eddy|reed|rocko|grandpa/i],
   },
+
+  kokoro: { female: "pf_dora", male: "pm_alex", espeak: "roa/pt-BR" },
 };

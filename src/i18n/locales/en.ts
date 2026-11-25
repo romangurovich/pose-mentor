@@ -82,6 +82,7 @@ export const en: Locale = {
     settings: {
       language: "Language",
       voice: "Coach voice",
+      voiceSystem: "No natural voice for this choice yet — using your device's voice.",
       female: "Female",
       male: "Male",
       preview: "Play sample",
@@ -232,4 +233,6 @@ export const en: Locale = {
     female: [/samantha|ava|allison|susan|zoe|nicky|karen|moira|tessa|serena|fiona|victoria/i, /aria|jenny|zira|libby|sonia|hazel|michelle|emma/i, /google us english|google uk english female/i, /flo|sandy|shelley|grandma/i],
     male: [/\balex\b|daniel|tom|aaron|evan|nathan|oliver|arthur|rishi|fred/i, /guy|david|mark|ryan|george|eric|christopher|andrew|brian/i, /google uk english male/i, /eddy|reed|rocko|grandpa/i],
   },
+
+  kokoro: { female: "af_heart", male: "am_michael" },
 };

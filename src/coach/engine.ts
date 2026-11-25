@@ -11,6 +11,8 @@ import { idx, other, type Joint, type PoseFrame, type Side } from "../pose/landm
 import { clamp } from "../pose/geometry.ts";
 import { METRICS, detectFacing, frontalness, type MetricId } from "./metrics.ts";
 import type { ExerciseDef, FormCheck, JointRef } from "./types.ts";
+import { DEFAULT_LOCALE, checkText } from "../i18n/index.ts";
+import type { JointWord, Locale, Messages } from "../i18n/types.ts";
 
 export interface EngineOptions {
   /** fraction of the healthy reference range to aim for (rehab patients often start at 0.5–0.8) */
@@ -19,6 +21,8 @@ export interface EngineOptions {
   holdSeconds?: number;
   /** force the starting side for unilateral exercises */
   startSide?: Side | "auto";
+  /** language of everything the coach says and shows (default: English) */
+  locale?: Locale;
 }
 
 export type Status =
@@ -100,7 +104,7 @@ export interface CoachState {
   events: CoachEvent[];
 }
 
-const JOINT_NAMES: Record<Joint, string> = {
+const JOINT_WORDS: Record<Joint, JointWord> = {
   shoulder: "shoulders",
   elbow: "elbows",
   wrist: "hands",
@@ -139,16 +143,28 @@ export interface FaultInfo {
   severity: "major" | "minor";
 }
 
-export const BUILTIN_FAULTS: Record<string, FaultInfo> = {
-  tempo: { label: "Rushing the rep", cue: "Take about 2 seconds each way", short: "Slower", fixed: "good pace", severity: "minor" },
-  lowering: { label: "Dropping too fast", cue: "Lower slowly, with control", short: "Slow on the way down", fixed: "nice control", severity: "minor" },
-  bounce: { label: "Bouncing", cue: "Hold still — no bouncing", fixed: "nice and still", severity: "minor" },
+/** the engine's own timing faults (labels and cues are localised in the locale's catalog) */
+export const BUILTIN_FAULTS: Record<string, Pick<FaultInfo, "label" | "severity">> = {
+  tempo: { label: "Rushing the rep", severity: "minor" },
+  lowering: { label: "Dropping too fast", severity: "minor" },
+  bounce: { label: "Bouncing", severity: "minor" },
 };
 
-/** label / cue / severity for any fault id an exercise can produce */
-export function faultInfo(ex: ExerciseDef, id: string): FaultInfo {
+/** label / cue / severity for any fault id an exercise can produce, in the given language */
+export function faultInfo(ex: ExerciseDef, id: string, locale: Locale = DEFAULT_LOCALE): FaultInfo {
   const c = ex.checks.find((x) => x.id === id);
-  return c ? { label: c.label, cue: c.cue, short: c.short, fixed: c.fixed, severity: c.severity } : BUILTIN_FAULTS[id] ?? { label: id, cue: "", severity: "minor" };
+  if (c) {
+    return {
+      label: checkText(locale, ex, id, "label") ?? c.label,
+      cue: checkText(locale, ex, id, "cue") ?? c.cue,
+      short: checkText(locale, ex, id, "short"),
+      fixed: checkText(locale, ex, id, "fixed"),
+      severity: c.severity,
+    };
+  }
+  const b = BUILTIN_FAULTS[id];
+  if (!b) return { label: id, cue: "", severity: "minor" };
+  return { ...b, ...locale.messages.builtin[id as keyof Messages["builtin"]] };
 }
 
 /**
@@ -190,11 +206,13 @@ const BOUNCE_SWING = 5;
 const BOUNCE_REVERSALS = 3;
 const BOUNCE_WINDOW_MS = 2500;
 
-const PRAISE = ["Nice rep", "Good control", "That's it", "Great form", "Smooth"];
 
 export class CoachEngine {
   readonly ex: ExerciseDef;
   readonly opts: Required<EngineOptions>;
+  private readonly locale: Locale;
+  /** the locale's message catalog */
+  private readonly m: Messages;
 
   private status: Status = "searching";
   private side: Side = "right";
@@ -262,7 +280,10 @@ export class CoachEngine {
       reps: opts.reps ?? ex.reps ?? 10,
       holdSeconds: opts.holdSeconds ?? ex.holdSeconds ?? 30,
       startSide: opts.startSide ?? "auto",
+      locale: opts.locale ?? DEFAULT_LOCALE,
     };
+    this.locale = this.opts.locale;
+    this.m = this.locale.messages;
     if (this.opts.startSide !== "auto") {
       this.side = this.opts.startSide;
       if (ex.sidePick !== "visible") this.lockedSide = this.opts.startSide;
@@ -324,7 +345,7 @@ export class CoachEngine {
   private cueRepFault(id: string, t: number) {
     if (this.repCued.has(id)) return; // once per rep
     this.repCued.add(id);
-    const info = faultInfo(this.ex, id);
+    const info = faultInfo(this.ex, id, this.locale);
     const level = cueLevel(info.severity, this.faultStreak.get(id) ?? 0);
     const text = level === "short" ? info.short ?? info.cue : info.cue;
     // unique key per rep: repetition is governed by the tapering, not the time-based gap
@@ -356,7 +377,7 @@ export class CoachEngine {
   }
 
   private sideWord(s: Side) {
-    return s === "left" ? "left" : "right";
+    return this.m.side[s];
   }
 
   // ───────────────────────────────────────────── side & facing ─────────────────────────────────────────────
@@ -398,7 +419,7 @@ export class CoachEngine {
     const missing = new Set<string>();
     for (const [i, j] of this.requiredIdx(side)) {
       const p = f.pts[i];
-      if (f.vis[i] < VIS_MIN || p.y < -0.02 || p.y > 1.02) missing.add(JOINT_NAMES[j]);
+      if (f.vis[i] < VIS_MIN || p.y < -0.02 || p.y > 1.02) missing.add(this.m.joint[JOINT_WORDS[j]]);
     }
     if (missing.size) return { kind: "framing", missing: [...missing] };
     const hipsVisible = Math.min(f.vis[idx("hip", "left")], f.vis[idx("hip", "right")]) > VIS_MIN;
@@ -446,13 +467,13 @@ export class CoachEngine {
         tr.on = true;
         if (this.status === "active") {
           if (this.ex.kind === "reps") this.cueRepFault(c.id, t);
-          else if (!this.say(c.cue, "cue", t, c.id)) this.events.push({ type: "flag", id: c.id });
+          else if (!this.say(faultInfo(this.ex, c.id, this.locale).cue, "cue", t, c.id)) this.events.push({ type: "flag", id: c.id });
         }
       } else if (tr.on && !tr.raw && t - tr.since >= FAULT_OFF_MS) {
         tr.on = false;
         // holds: acknowledge a correction made right after the cue
         if (this.ex.kind === "hold" && this.inPosition && t - (this.lastSaid.get(c.id) ?? -Infinity) < 8000) {
-          this.say(`Better — ${c.fixed ?? "that's it"}`, "praise", t, `fixed-${c.id}`, true);
+          this.say(this.m.say.better(faultInfo(this.ex, c.id, this.locale).fixed ?? this.m.say.fixedFallback), "praise", t, `fixed-${c.id}`, true);
         }
       }
       tr.value = value;
@@ -461,7 +482,7 @@ export class CoachEngine {
         active.push({
           id: c.id,
           label: c.label,
-          cue: c.cue,
+          cue: faultInfo(this.ex, c.id, this.locale).cue,
           severity: c.severity,
           value,
           threshold: c.threshold,
@@ -506,8 +527,7 @@ export class CoachEngine {
     if (this.framedAnnounced || t - this.frameOkSince < FRAME_OK_MS) return;
     this.framedAnnounced = true;
     this.goodToGoAt = t;
-    const next = this.ex.kind === "reps" ? "start when you're ready" : "ease into the stretch";
-    this.say(`I can see everything. You're good to go — ${next}.`, "info", t, "good-to-go-" + this.sideIndex, true);
+    this.say(this.m.say.goodToGo(this.ex.kind), "info", t, "good-to-go-" + this.sideIndex, true);
   }
 
   private goodToGo(t: number): boolean {
@@ -534,10 +554,10 @@ export class CoachEngine {
       this.switchSince = t;
       this.resetFraming();
       this.setStatus("switch", t);
-      this.say(`Great work. Now switch to your ${this.sideWord(next)} side.`, "info", t, "switch", true);
+      this.say(this.m.say.switchSides(this.sideWord(next)), "info", t, "switch", true);
     } else {
       this.setStatus("done", t);
-      this.say(this.ex.kind === "reps" ? "Set complete. Nice work!" : "All done. Nice work!", "info", t, "done", true);
+      this.say(this.ex.kind === "reps" ? this.m.say.setComplete : this.m.say.allDone, "info", t, "done", true);
       this.events.push({ type: "done" });
     }
   }
@@ -584,7 +604,7 @@ export class CoachEngine {
       this.resetFraming();
       this.clearFaults();
       if (this.status === s) {
-        const text = s === "framing" ? `Step back so I can see your ${g!.missing.join(" and ")}` : this.ex.view === "side" ? "Turn sideways to the camera" : "Face the camera";
+        const text = s === "framing" ? this.m.say.stepBack(this.m.list(g!.missing)) : this.ex.view === "side" ? this.m.say.turnSideways : this.m.say.faceCamera;
         this.say(text, "info", t, s);
       }
       return this.snapshot(f, [], this.metric(this.ex.primary.metric, f, side, facing), 0, facing, g!.missing);
@@ -612,7 +632,7 @@ export class CoachEngine {
         this.updateBaseline(f, facing);
         if (t - this.restSince > 350 && !this.armed) {
           this.armed = true;
-          if (this.status !== "active" && this.framedAnnounced && !this.goodToGo(t)) this.say(this.reps.length || this.sideIndex ? "Ready" : "Ready when you are", "info", t, "ready-" + this.sideIndex);
+          if (this.status !== "active" && this.framedAnnounced && !this.goodToGo(t)) this.say(this.reps.length || this.sideIndex ? this.m.say.readyAgain : this.m.say.readyFirst, "info", t, "ready-" + this.sideIndex);
         }
       } else this.restSince = null;
       if (this.status !== "active") this.setStatus("ready", t);
@@ -660,7 +680,7 @@ export class CoachEngine {
     const duration = t - this.repStart;
     if (reach < 0.7) {
       this.endRepStreaks([...this.repFaults]);
-      if (reach >= 0.4) this.say("Go a little further — reach the target line", "cue", t, "further");
+      if (reach >= 0.4) this.say(this.m.say.shallow, "cue", t, "further");
       return;
     }
     const faults = [...this.repFaults];
@@ -700,17 +720,18 @@ export class CoachEngine {
     const timing = faults.includes("tempo") ? "tempo" : faults.includes("lowering") ? "lowering" : null;
     const timingLevel = timing ? cueLevel("minor", this.faultStreak.get(timing) ?? 0) : null;
     const fixed = this.endRepStreaks(faults);
-    this.say(String(repsThisSide), "count", t, `count-${this.reps.length}`, true);
+    this.say(this.m.say.count(repsThisSide), "count", t, `count-${this.reps.length}`, true);
     if (timing && timingLevel) {
-      const b = BUILTIN_FAULTS[timing];
-      const text = timingLevel === "short" ? b.short ?? b.cue : timing === "tempo" ? "Slow it down a little" : b.cue;
+      const b = faultInfo(this.ex, timing, this.locale);
+      const text = timingLevel === "short" ? b.short ?? b.cue : timing === "tempo" ? this.m.say.slowDown : b.cue;
       this.say(text, "cue", t, `${timing}#${this.attempt}`, true);
       this.lastCuedAttempt.set(timing, this.attempt);
-    } else if (!full) this.say("Almost — a bit further next time", "cue", t, "almost", true);
+    } else if (!full) this.say(this.m.say.almost, "cue", t, "almost", true);
     else if (fixed.length) {
-      this.say(`Better — ${faultInfo(this.ex, fixed[0]).fixed ?? "that's it"}`, "praise", t, `fixed#${this.attempt}`, true);
+      this.say(this.m.say.better(faultInfo(this.ex, fixed[0], this.locale).fixed ?? this.m.say.fixedFallback), "praise", t, `fixed#${this.attempt}`, true);
     } else if (faults.length === 0 && repsThisSide % 3 === 0) {
-      this.say(PRAISE[this.praiseIdx++ % PRAISE.length], "praise", t, "praise", true);
+      const praise = this.m.say.praise;
+      this.say(praise[this.praiseIdx++ % praise.length], "praise", t, "praise", true);
     }
 
     if (repsThisSide >= this.opts.reps) this.finishSide(t);
@@ -732,7 +753,7 @@ export class CoachEngine {
     const paused = faults.some((x) => x.severity === "major");
 
     if (this.inPosition) {
-      if (!wasIn) this.say(this.holdElapsed > 0 ? "Back in position" : "Good. Hold it there", "info", t, "hold-in");
+      if (!wasIn) this.say(this.holdElapsed > 0 ? this.m.say.backInPosition : this.m.say.holdIn, "info", t, "hold-in");
       if (!paused) this.holdElapsed += dt;
       for (const fl of faults) this.holdFaultSec[fl.id] = (this.holdFaultSec[fl.id] ?? 0) + dt;
       this.holdBest = Math.max(this.holdBest, value * Math.sign(ex.primary.target - ex.primary.start));
@@ -740,11 +761,11 @@ export class CoachEngine {
       const half = this.opts.holdSeconds / 2;
       if (this.holdElapsed >= half && !this.holdAnnounced.has("half") && this.opts.holdSeconds >= 20) {
         this.holdAnnounced.add("half");
-        this.say("Halfway there", "info", t, "half-" + this.sideIndex, true);
+        this.say(this.m.say.halfway, "info", t, "half-" + this.sideIndex, true);
       }
       if (left <= 5 && !this.holdAnnounced.has("5")) {
         this.holdAnnounced.add("5");
-        this.say("Five more seconds", "info", t, "five-" + this.sideIndex, true);
+        this.say(this.m.say.fiveMore, "info", t, "five-" + this.sideIndex, true);
       }
       if (left <= 0) {
         this.holds.push({
@@ -759,9 +780,9 @@ export class CoachEngine {
         this.finishSide(t);
       }
     } else if (wasIn) {
-      this.say("Ease back into the stretch", "cue", t, "hold-out");
+      this.say(this.m.say.easeBack, "cue", t, "hold-out");
     } else if (p > 0.4) {
-      this.say("A little further", "cue", t, "further");
+      this.say(this.m.say.littleFurther, "cue", t, "further");
     }
 
     return this.snapshot(f, faults, value, p, facing, []);
@@ -790,10 +811,10 @@ export class CoachEngine {
     this.bounceRevs = this.bounceRevs.filter((x) => t - x <= BOUNCE_WINDOW_MS);
     if (!this.bounceOn && this.bounceRevs.length >= BOUNCE_REVERSALS) {
       this.bounceOn = true;
-      this.say(BUILTIN_FAULTS.bounce.cue, "cue", t, "bounce");
+      this.say(faultInfo(this.ex, "bounce", this.locale).cue, "cue", t, "bounce");
     } else if (this.bounceOn && (this.bounceRevs.length === 0 || t - this.bounceRevs[this.bounceRevs.length - 1] > 1500)) this.bounceOn = false;
     if (!this.bounceOn) return null;
-    const b = BUILTIN_FAULTS.bounce;
+    const b = faultInfo(this.ex, "bounce", this.locale);
     return { id: "bounce", label: b.label, cue: b.cue, severity: b.severity, value: this.bounceSwing, threshold: BOUNCE_SWING, unit: METRICS[this.ex.primary.metric].unit };
   }
 
@@ -806,27 +827,27 @@ export class CoachEngine {
 
   // ───────────────────────────────────────────── snapshot ─────────────────────────────────────────────
 
-  private headline(missing: string[]): [string, string] {
+  private headline(missing: string[]): readonly [string, string] {
     const ex = this.ex;
-    const sideTxt = ex.bothSides ? ` · ${this.side === "left" ? "Left" : "Right"} side` : "";
+    const S = this.m.status;
+    const suffix = ex.bothSides ? S.sideSuffix(this.side) : "";
     switch (this.status) {
       case "searching":
-        return ["Step into view", "Stand where the camera can see your whole body."];
+        return S.searching;
       case "framing":
-        return [`I can't see your ${missing.join(" & ")}`, "Step back or adjust the camera so they're in frame."];
+        return S.framing(this.m.list(missing));
       case "orient":
-        return ex.view === "side" ? ["Turn sideways", "This move is judged from the side."] : ["Face the camera", "This move is judged from the front."];
+        return ex.view === "side" ? S.orientSide : S.orientFront;
       case "ready":
-        if (this.goodToGo(this.lastT ?? 0))
-          return [`You're good to go${sideTxt}`, ex.kind === "reps" ? "I can see everything I need — start when you're ready." : "I can see everything I need — ease into the stretch."];
-        if (ex.kind === "reps" && !this.armed) return [`Return to the start${sideTxt}`, "Settle into the starting position."];
-        return ex.kind === "reps" ? [`Ready${sideTxt}`, "Begin when you are — I'll count your reps."] : [`Get into the stretch${sideTxt}`, "Ease into position; the timer starts when you get there."];
+        if (this.goodToGo(this.lastT ?? 0)) return S.goodToGo(suffix, ex.kind);
+        if (ex.kind === "reps" && !this.armed) return S.returnToStart(suffix);
+        return ex.kind === "reps" ? S.readyReps(suffix) : S.readyHold(suffix);
       case "active":
-        return ex.kind === "reps" ? [`Rep ${this.reps.filter((r) => !ex.bothSides || r.side === this.side).length + 1}${sideTxt}`, ""] : [`Hold${sideTxt}`, "Breathe slowly and relax into it."];
+        return ex.kind === "reps" ? [S.rep(this.reps.filter((r) => !ex.bothSides || r.side === this.side).length + 1, suffix), ""] : S.hold(suffix);
       case "switch":
-        return [`Switch to your ${this.side} side`, "Turn around or swap limbs, then get ready."];
+        return S.switchTo(this.sideWord(this.side));
       case "done":
-        return ["Set complete", "Nice work."];
+        return S.done;
     }
   }
 

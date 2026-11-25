@@ -7,6 +7,8 @@ import { Session } from "./ui/Session.tsx";
 import { Summary } from "./ui/Summary.tsx";
 import { saveSession, type SessionResult } from "./ui/history.ts";
 import { Icon } from "./ui/icons.tsx";
+import { SettingsPicker } from "./ui/SettingsPicker.tsx";
+import { useI18n } from "./ui/i18n.tsx";
 
 type View =
   | { name: "library"; setup?: ExerciseDef }
@@ -33,6 +35,7 @@ function initialView(): View {
 
 export function App() {
   const [view, setView] = useState<View>(initialView);
+  const { locale } = useI18n();
 
   const finish = useCallback((ex: ExerciseDef, cfg: SessionConfig, result: SessionResult | null) => {
     if (result && (result.reps.length || result.holds.length)) {
@@ -54,9 +57,12 @@ export function App() {
           </span>
           Pose Mentor
         </button>
-        <span className="nav-note">
-          <Icon.Lock size={14} /> Runs on-device
-        </span>
+        <div className="nav-right">
+          <SettingsPicker />
+          <span className="nav-note">
+            <Icon.Lock size={14} /> {locale.ui.nav.runsOnDevice}
+          </span>
+        </div>
       </nav>
       <main>
         {view.name === "library" && (

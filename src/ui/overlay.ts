@@ -16,15 +16,27 @@ export interface Layout {
   mirror: boolean;
 }
 
-export const COLORS = {
-  accent: "#5eead4",
-  accentDeep: "#14b8a6",
-  good: "#4ade80",
-  minor: "#fbbf24",
-  major: "#fb7185",
-  bone: "rgba(226,232,240,0.55)",
-  boneDim: "rgba(226,232,240,0.28)",
-};
+const FALLBACK = { accent: "#5eead4", good: "#4ade80", minor: "#fbbf24", major: "#fb7185", bone: "rgba(226,232,240,0.55)", boneDim: "rgba(226,232,240,0.28)" };
+
+/** "#rrggbb" + alpha → rgba() (falls back to the colour itself for other formats) */
+function alpha(hex: string, a: number): string {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex.trim());
+  return m ? `rgba(${parseInt(m[1], 16)},${parseInt(m[2], 16)},${parseInt(m[3], 16)},${a})` : hex;
+}
+
+let cache: { theme: string | undefined; colors: typeof FALLBACK } | null = null;
+
+/** skeleton colours follow the active theme's CSS tokens (re-read only when the theme changes) */
+export function overlayColors(): typeof FALLBACK {
+  if (typeof document === "undefined") return FALLBACK;
+  const theme = document.documentElement.dataset.theme;
+  if (cache && cache.theme === theme) return cache.colors;
+  const css = getComputedStyle(document.documentElement);
+  const v = (name: string, fb: string) => css.getPropertyValue(name).trim() || fb;
+  const colors = { ...FALLBACK, accent: v("--accent", FALLBACK.accent), good: v("--good", FALLBACK.good), minor: v("--minor", FALLBACK.minor), major: v("--major", FALLBACK.major) };
+  cache = { theme, colors };
+  return colors;
+}
 
 const SIDE_JOINTS = (side: Side) => new Set(["shoulder", "elbow", "wrist", "hip", "knee", "ankle", "heel", "toe"].map((j) => idx(j as never, side)));
 
@@ -48,6 +60,7 @@ export function drawOverlay(ctx: CanvasRenderingContext2D, frame: PoseFrame | nu
   const tracked = st && (st.status === "ready" || st.status === "active" || st.status === "switch" || st.status === "done");
   const assessed = st ? SIDE_JOINTS(st.side) : new Set<number>();
   const hl = st?.highlight ?? new Map<number, "major" | "minor">();
+  const COLORS = overlayColors();
   const sevColor = (s: "major" | "minor") => (s === "major" ? COLORS.major : COLORS.minor);
 
   ctx.lineCap = "round";
@@ -90,7 +103,7 @@ export function drawOverlay(ctx: CanvasRenderingContext2D, frame: PoseFrame | nu
       const pulse = 0.5 + 0.5 * Math.sin(now / 160);
       ctx.beginPath();
       ctx.arc(P[i].x, P[i].y, r * (2.2 + pulse * 1.4), 0, Math.PI * 2);
-      ctx.fillStyle = sev === "major" ? "rgba(251,113,133,0.18)" : "rgba(251,191,36,0.18)";
+      ctx.fillStyle = alpha(sev === "major" ? COLORS.major : COLORS.minor, 0.18);
       ctx.fill();
     }
     ctx.beginPath();
@@ -106,6 +119,7 @@ export function drawOverlay(ctx: CanvasRenderingContext2D, frame: PoseFrame | nu
 }
 
 function drawArc(ctx: CanvasRenderingContext2D, P: Vec2[], vis: number[], st: CoachState, ex: ExerciseDef, lw: number) {
+  const COLORS = overlayColors();
   const [ja, jb, jc] = ex.primary.arc!;
   const a = P[idx(ja, st.side)], b = P[idx(jb, st.side)], c = P[idx(jc, st.side)];
   if ([idx(ja, st.side), idx(jb, st.side), idx(jc, st.side)].some((i) => vis[i] < 0.4)) return;
@@ -129,7 +143,7 @@ function drawArc(ctx: CanvasRenderingContext2D, P: Vec2[], vis: number[], st: Co
   ctx.moveTo(b.x, b.y);
   ctx.arc(b.x, b.y, r, a0, a0 + Math.abs(d));
   ctx.closePath();
-  ctx.fillStyle = reached ? "rgba(74,222,128,0.2)" : "rgba(94,234,212,0.16)";
+  ctx.fillStyle = reached ? alpha(COLORS.good, 0.2) : alpha(COLORS.accent, 0.16);
   ctx.fill();
   ctx.beginPath();
   ctx.arc(b.x, b.y, r, a0, a0 + Math.abs(d));

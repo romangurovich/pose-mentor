@@ -1,26 +1,43 @@
 /** Spoken coaching via the Web Speech API, plus subtle audio ticks via WebAudio. */
+import { DEFAULT_LOCALE } from "../i18n/index.ts";
+import type { Locale, VoiceGender } from "../i18n/types.ts";
 
 type Kind = "cue" | "count" | "praise" | "info";
 const PRIORITY: Record<Kind, number> = { cue: 3, info: 2, count: 1, praise: 0 };
 
+/**
+ * Best system voice for a language and gender. The Web Speech API exposes voice names, not genders, so each
+ * locale lists known female / male voice names. If none is installed we fall back to any voice in the
+ * language (and nudge the pitch toward the requested gender).
+ */
+export function pickVoice(l: Locale, gender: VoiceGender): { voice: SpeechSynthesisVoice | null; matched: boolean } {
+  if (typeof speechSynthesis === "undefined") return { voice: null, matched: false };
+  const lang = l.tag.slice(0, 2).toLowerCase();
+  const inLang = speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith(lang));
+  // prefer the exact regional variant (pt-BR over pt-PT) when both exist
+  const ranked = [...inLang].sort((a, b) => Number(b.lang.toLowerCase() === l.tag.toLowerCase()) - Number(a.lang.toLowerCase() === l.tag.toLowerCase()));
+  for (const re of l.voices[gender]) {
+    const v = ranked.find((x) => re.test(x.name));
+    if (v) return { voice: v, matched: true };
+  }
+  return { voice: ranked[0] ?? null, matched: false };
+}
+
 export class VoiceCoach {
   enabled = true;
   private voice: SpeechSynthesisVoice | null = null;
+  private matched = false;
+  private readonly locale: Locale;
+  private readonly gender: VoiceGender;
   private current: { kind: Kind } | null = null;
   private queue: Array<{ text: string; kind: Kind }> = [];
   private audio: AudioContext | null = null;
 
-  constructor() {
+  constructor(locale: Locale = DEFAULT_LOCALE, gender: VoiceGender = "female") {
+    this.locale = locale;
+    this.gender = gender;
     if (typeof speechSynthesis === "undefined") return;
-    const pick = () => {
-      const vs = speechSynthesis.getVoices().filter((v) => v.lang.startsWith("en"));
-      const prefs = [/natural/i, /aria|jenny|guy|libby|sonia/i, /google us english/i, /samantha|ava|allison/i, /en-us/i];
-      for (const re of prefs) {
-        const v = vs.find((x) => re.test(x.name) || re.test(x.lang));
-        if (v) return (this.voice = v);
-      }
-      this.voice = vs[0] ?? null;
-    };
+    const pick = () => ({ voice: this.voice, matched: this.matched } = pickVoice(this.locale, this.gender));
     pick();
     speechSynthesis.addEventListener?.("voiceschanged", pick);
   }
@@ -44,8 +61,9 @@ export class VoiceCoach {
     const next = this.queue.shift()!;
     const u = new SpeechSynthesisUtterance(next.text);
     if (this.voice) u.voice = this.voice;
+    u.lang = this.voice?.lang ?? this.locale.tag;
     u.rate = next.kind === "count" ? 1.15 : 1.04;
-    u.pitch = 1;
+    u.pitch = fallbackPitch(this.gender, this.matched);
     u.volume = 1;
     this.current = { kind: next.kind };
     const done = () => {
@@ -110,4 +128,23 @@ export class VoiceCoach {
       /* audio unavailable */
     }
   }
+}
+
+/** without a named voice of the requested gender, nudge the default voice's pitch toward it */
+function fallbackPitch(gender: VoiceGender, matched: boolean): number {
+  if (matched) return 1;
+  return gender === "male" ? 0.85 : 1.1;
+}
+
+/** speak the locale's sample line in the chosen voice (settings preview) */
+export function previewVoice(l: Locale, gender: VoiceGender) {
+  if (typeof speechSynthesis === "undefined") return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(l.messages.sample);
+  const { voice, matched } = pickVoice(l, gender);
+  if (voice) u.voice = voice;
+  u.lang = voice?.lang ?? l.tag;
+  u.pitch = fallbackPitch(gender, matched);
+  u.rate = 1.04;
+  speechSynthesis.speak(u);
 }

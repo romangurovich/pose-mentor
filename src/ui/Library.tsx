@@ -4,13 +4,10 @@ import type { ExerciseDef, Region } from "../coach/types.ts";
 import { DemoFigure } from "./demo/DemoFigure.tsx";
 import { Icon } from "./icons.tsx";
 import { loadHistory, type SessionResult } from "./history.ts";
+import { useI18n } from "./i18n.tsx";
+import { exerciseText, metricLabel } from "../i18n/index.ts";
 
-const REGIONS: Array<{ id: Region | "all"; label: string }> = [
-  { id: "all", label: "All" },
-  { id: "knee-hip", label: "Knee & Hip" },
-  { id: "shoulder", label: "Shoulder" },
-  { id: "spine-neck", label: "Spine & Neck" },
-];
+const REGIONS: Array<Region | "all"> = ["all", "knee-hip", "shoulder", "spine-neck"];
 
 interface Props {
   onPick: (ex: ExerciseDef) => void;
@@ -22,6 +19,8 @@ export function Library({ onPick, onOpenResult }: Props) {
   const [kind, setKind] = useState<"all" | "reps" | "hold">("all");
   const [hover, setHover] = useState<string | null>(null);
   const history = useMemo(() => loadHistory().slice(0, 6), []);
+  const { locale } = useI18n();
+  const t = locale.ui.library;
 
   const list = EXERCISES.filter((e) => (region === "all" || e.region === region) && (kind === "all" || e.kind === kind));
   const calibratedCount = Object.keys(UIPRMD_MAP).length;
@@ -31,31 +30,28 @@ export function Library({ onPick, onOpenResult }: Props) {
       <section className="hero">
         <div className="hero-copy">
           <span className="eyebrow">
-            <Icon.Spark size={14} /> Real-time form coaching for physical rehab
+            <Icon.Spark size={14} /> {t.eyebrow}
           </span>
           <h1>
-            Your rehab exercises,
+            {t.titleLine1}
             <br />
-            <em>with a coach watching your form.</em>
+            <em>{t.titleLine2}</em>
           </h1>
-          <p className="lede">
-            Pose Mentor tracks 33 body landmarks from your webcam, measures joint angles like a clinician's goniometer, counts
-            your reps and tells you what to adjust, out loud and as you move.
-          </p>
+          <p className="lede">{t.lede}</p>
           <div className="hero-facts">
             <div>
               <strong>{EXERCISES.length}</strong>
-              <span>rehab exercises & stretches</span>
+              <span>{t.factExercises}</span>
             </div>
             <div>
               <strong>{calibratedCount}</strong>
-              <span>calibrated on the public UI-PRMD rehab-movement dataset</span>
+              <span>{t.factCalibrated}</span>
             </div>
             <div>
               <strong>
                 <Icon.Lock size={18} />
               </strong>
-              <span>on-device: video never leaves your browser</span>
+              <span>{t.factOnDevice}</span>
             </div>
           </div>
         </div>
@@ -63,17 +59,17 @@ export function Library({ onPick, onOpenResult }: Props) {
           <div className="hero-ring" />
           <DemoFigure spec={EXERCISES[0].demo} period={4} className="hero-figure" highlight />
           <div className="hero-chip hero-chip-a">
-            <span className="dot good" /> Knee flexion 104°
+            <span className="dot good" /> {metricLabel(locale, "kneeFlexion")} 104°
           </div>
           <div className="hero-chip hero-chip-b">
-            <Icon.Check size={14} /> Rep 6 · great depth
+            <Icon.Check size={14} /> {t.heroRepChip}
           </div>
         </div>
       </section>
 
       {history.length > 0 && (
         <section className="recent">
-          <h2 className="section-title">Recent sessions</h2>
+          <h2 className="section-title">{t.recent}</h2>
           <div className="recent-row">
             {history.map((h) => {
               const ex = EXERCISES.find((e) => e.id === h.exerciseId);
@@ -82,10 +78,10 @@ export function Library({ onPick, onOpenResult }: Props) {
                 <button key={h.id} className="recent-card" onClick={() => onOpenResult(h)}>
                   <ScoreBadge score={h.formScore} />
                   <div>
-                    <div className="recent-name">{ex.name}</div>
+                    <div className="recent-name">{exerciseText(locale, ex).name}</div>
                     <div className="recent-meta">
-                      {ex.kind === "reps" ? `${h.reps.length} reps` : `${h.holds.length} hold${h.holds.length === 1 ? "" : "s"}`} ·{" "}
-                      {new Date(h.startedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                      {ex.kind === "reps" ? t.repsCount(h.reps.length) : t.holdsCount(h.holds.length)} ·{" "}
+                      {new Date(h.startedAt).toLocaleDateString(locale.tag, { month: "short", day: "numeric" })}
                     </div>
                   </div>
                 </button>
@@ -97,19 +93,19 @@ export function Library({ onPick, onOpenResult }: Props) {
 
       <section>
         <div className="toolbar">
-          <h2 className="section-title">Exercise library</h2>
+          <h2 className="section-title">{t.title}</h2>
           <div className="filters">
-            <div className="seg" role="tablist" aria-label="Body region">
+            <div className="seg" role="tablist" aria-label={t.ariaRegion}>
               {REGIONS.map((r) => (
-                <button key={r.id} role="tab" aria-selected={region === r.id} className={region === r.id ? "on" : ""} onClick={() => setRegion(r.id)}>
-                  {r.label}
+                <button key={r} role="tab" aria-selected={region === r} className={region === r ? "on" : ""} onClick={() => setRegion(r)}>
+                  {t.regions[r]}
                 </button>
               ))}
             </div>
-            <div className="seg" role="tablist" aria-label="Type">
+            <div className="seg" role="tablist" aria-label={t.ariaType}>
               {(["all", "reps", "hold"] as const).map((k) => (
                 <button key={k} role="tab" aria-selected={kind === k} className={kind === k ? "on" : ""} onClick={() => setKind(k)}>
-                  {k === "all" ? "All" : k === "reps" ? "Exercises" : "Stretches & holds"}
+                  {t.kinds[k]}
                 </button>
               ))}
             </div>
@@ -117,7 +113,9 @@ export function Library({ onPick, onOpenResult }: Props) {
         </div>
 
         <div className="grid">
-          {list.map((ex) => (
+          {list.map((ex) => {
+            const text = exerciseText(locale, ex);
+            return (
             <button
               key={ex.id}
               className="card"
@@ -132,41 +130,38 @@ export function Library({ onPick, onOpenResult }: Props) {
                 <div className="card-badges">
                   <span className="badge">
                     {ex.view === "side" ? <Icon.Side size={13} /> : <Icon.Front size={13} />}
-                    {ex.view === "side" ? "Side view" : "Face camera"}
+                    {ex.view === "side" ? t.sideView : t.faceCamera}
                   </span>
                   {ex.source.dataset && (
-                    <span className="badge badge-data" title={`Range calibrated from ${ex.source.movement}`}>
+                    <span className="badge badge-data" title={t.calibratedFrom(ex.source.movement ?? "")}>
                       <Icon.Data size={13} /> UI-PRMD
                     </span>
                   )}
                 </div>
               </div>
               <div className="card-body">
-                <div className="card-title">{ex.name}</div>
-                <div className="card-tagline">{ex.tagline}</div>
+                <div className="card-title">{text.name}</div>
+                <div className="card-tagline">{text.tagline}</div>
                 <div className="card-meta">
                   <span>
                     {ex.kind === "reps" ? <Icon.Repeat size={14} /> : <Icon.Timer size={14} />}
-                    {ex.kind === "reps" ? `${ex.reps} reps` : `${ex.holdSeconds}s hold`}
-                    {ex.bothSides ? " · each side" : ""}
+                    {ex.kind === "reps" ? t.cardReps(ex.reps ?? 10) : t.cardHold(ex.holdSeconds ?? 30)}
+                    {ex.bothSides ? t.eachSide : ""}
                   </span>
                   <span className="card-go">
-                    Start <Icon.Arrow size={14} />
+                    {t.start} <Icon.Arrow size={14} />
                   </span>
                 </div>
               </div>
             </button>
-          ))}
+            );
+          })}
         </div>
       </section>
 
       <footer className="foot">
         <Icon.Shield size={16} />
-        <p>
-          Pose Mentor is a proof of concept, not medical advice. Follow the plan your physical therapist gave you, and stop if
-          anything hurts. Pose model: MediaPipe BlazePose (Apache-2.0). Reference ranges: UI-PRMD (Vakanski et al., 2018, public domain)
-          and AAOS normative joint ranges.
-        </p>
+        <p>{t.footer}</p>
       </footer>
     </div>
   );

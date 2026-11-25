@@ -11,6 +11,9 @@ import { DemoFigure } from "./demo/DemoFigure.tsx";
 import { Icon } from "./icons.tsx";
 import type { SessionConfig } from "./SetupSheet.tsx";
 import type { SessionResult } from "./history.ts";
+import { useI18n } from "./i18n.tsx";
+import { exerciseText, fmtValue, metricLabel } from "../i18n/index.ts";
+import type { Locale } from "../i18n/types.ts";
 
 interface Props {
   ex: ExerciseDef;
@@ -27,7 +30,14 @@ export function Session({ ex, cfg, onExit }: Props) {
   const backdropRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
-  const [phase, setPhase] = useState<Phase>({ kind: "loading", msg: "Starting camera…" });
+  const { locale: currentLocale, settings } = useI18n();
+  // the language is fixed for the length of a session (the engine and voice are built once)
+  const locale = useRef<Locale>(currentLocale).current;
+  const gender = useRef(settings.voice).current;
+  const m = locale.messages;
+  const t = locale.ui.session;
+  const exName = exerciseText(locale, ex).name;
+  const [phase, setPhase] = useState<Phase>({ kind: "loading", msg: t.startingCamera });
   const [hud, setHud] = useState<CoachState | null>(null);
   const [fps, setFps] = useState(0);
   const [voiceOn, setVoiceOn] = useState(cfg.voice);
@@ -37,8 +47,8 @@ export function Session({ ex, cfg, onExit }: Props) {
   const [delegate, setDelegate] = useState<string>("");
   const [fileSrc, setFileSrc] = useState<string | null>(videoParam());
 
-  const engineRef = useRef<CoachEngine>(new CoachEngine(ex, { rangeGoal: cfg.rangeGoal, reps: cfg.reps, holdSeconds: cfg.holdSeconds, startSide: cfg.startSide }));
-  const voiceRef = useRef(new VoiceCoach());
+  const engineRef = useRef<CoachEngine>(new CoachEngine(ex, { rangeGoal: cfg.rangeGoal, reps: cfg.reps, holdSeconds: cfg.holdSeconds, startSide: cfg.startSide, locale }));
+  const voiceRef = useRef(new VoiceCoach(locale, gender));
   const startedAt = useRef(Date.now());
   const mirrorRef = useRef(mirror);
   const pausedRef = useRef(paused);
@@ -111,7 +121,7 @@ export function Session({ ex, cfg, onExit }: Props) {
           backdropRef.current.muted = true;
           void backdropRef.current.play();
         }
-        setPhase({ kind: "loading", msg: `Loading pose model (${cfg.model})…` });
+        setPhase({ kind: "loading", msg: t.loadingModel(cfg.model) });
         detector = await PoseDetector.create(cfg.model, new URLSearchParams(location.search).get("delegate") === "CPU" ? "CPU" : "GPU");
         if (cancelled) return detector.close();
         setDelegate(detector.info?.delegate ?? "");
@@ -119,12 +129,7 @@ export function Session({ ex, cfg, onExit }: Props) {
         loop();
       } catch (e) {
         const err = e as DOMException;
-        const msg =
-          err?.name === "NotAllowedError"
-            ? "Camera permission was denied. Allow camera access in your browser's site settings, then retry."
-            : err?.name === "NotFoundError"
-              ? "No camera was found. Connect a webcam, or analyse a recorded video instead."
-              : `Couldn't start: ${err?.message ?? String(e)}`;
+        const msg = err?.name === "NotAllowedError" ? t.errDenied : err?.name === "NotFoundError" ? t.errNotFound : t.errGeneric(err?.message ?? String(e));
         if (!cancelled) setPhase({ kind: "error", msg });
       }
     }
@@ -232,12 +237,12 @@ export function Session({ ex, cfg, onExit }: Props) {
 
       {/* top bar */}
       <header className="topbar glass">
-        <button className="icon-btn" onClick={() => onExit(buildResult())} aria-label="End session">
+        <button className="icon-btn" onClick={() => onExit(buildResult())} aria-label={t.endSession}>
           <Icon.Back />
         </button>
         <div className="topbar-title">
-          <strong>{ex.name}</strong>
-          {st && ex.bothSides && <span className="chip">{st.side === "left" ? "Left" : "Right"} side · {st.sideIndex + 1}/2</span>}
+          <strong>{exName}</strong>
+          {st && ex.bothSides && <span className="chip">{t.sideChip(m.sideCap[st.side], st.sideIndex + 1, 2)}</span>}
         </div>
         <div className="topbar-right">
           {phase.kind === "running" && (
@@ -245,13 +250,13 @@ export function Session({ ex, cfg, onExit }: Props) {
               <span className="live-dot" /> {fps} fps{delegate ? ` · ${delegate}` : ""}
             </span>
           )}
-          <button className={`icon-btn ${paused ? "on" : ""}`} onClick={() => setPaused((p) => !p)} aria-label={paused ? "Resume" : "Pause"} title="Pause (space)">
+          <button className={`icon-btn ${paused ? "on" : ""}`} onClick={() => setPaused((p) => !p)} aria-label={paused ? t.resume : t.pause} title={t.pauseHint}>
             {paused ? <Icon.Play size={18} /> : <Icon.Pause size={18} />}
           </button>
-          <button className={`icon-btn ${mirror ? "on" : ""}`} onClick={() => setMirror((m) => !m)} aria-label="Mirror video" title="Mirror">
+          <button className={`icon-btn ${mirror ? "on" : ""}`} onClick={() => setMirror((m) => !m)} aria-label={t.mirror} title={t.mirror}>
             <Icon.Mirror size={18} />
           </button>
-          <button className={`icon-btn ${voiceOn ? "on" : ""}`} onClick={() => setVoiceOn((v) => !v)} aria-label="Voice coaching" title="Voice">
+          <button className={`icon-btn ${voiceOn ? "on" : ""}`} onClick={() => setVoiceOn((v) => !v)} aria-label={t.voice} title={t.voice}>
             {voiceOn ? <Icon.Volume size={18} /> : <Icon.Mute size={18} />}
           </button>
         </div>
@@ -260,15 +265,15 @@ export function Session({ ex, cfg, onExit }: Props) {
       {phase.kind === "running" && st && (
         <>
           <aside className="hud-left glass">
-            {ex.kind === "reps" ? <RepRing done={st.repsThisSide} target={st.repTarget} /> : <HoldRing st={st} />}
+            {ex.kind === "reps" ? <RepRing done={st.repsThisSide} target={st.repTarget} label={t.ofReps(st.repTarget)} /> : <HoldRing st={st} locale={locale} />}
             <div className="hud-stats">
               <div>
-                <span className="k">Form</span>
+                <span className="k">{t.form}</span>
                 <span className="v">{st.formScore ?? "–"}</span>
               </div>
               {ex.kind === "reps" && (
                 <div>
-                  <span className="k">Best</span>
+                  <span className="k">{t.best}</span>
                   <span className="v">
                     {st.reps.length ? Math.round(Math.max(...st.reps.filter((r) => r.side === st.side).map((r) => Math.abs(r.peak)), 0)) : "–"}
                     <small>{metric.unit}</small>
@@ -282,17 +287,17 @@ export function Session({ ex, cfg, onExit }: Props) {
                   .filter((r) => !ex.bothSides || r.side === st.side)
                   .slice(-12)
                   .map((r) => (
-                    <span key={r.index} className={`rep-dot ${r.score >= 85 ? "good" : r.score >= 65 ? "ok" : "low"}`} title={`Rep ${r.index}: ${r.score}`} />
+                    <span key={r.index} className={`rep-dot ${r.score >= 85 ? "good" : r.score >= 65 ? "ok" : "low"}`} title={t.repDot(r.index, r.score)} />
                   ))}
               </div>
             )}
           </aside>
 
           <aside className="hud-right glass">
-            <RangeMeter st={st} label={metric.label} />
+            <RangeMeter st={st} label={metricLabel(locale, ex.primary.metric)} locale={locale} />
           </aside>
 
-          <CueBar st={st} flash={flash} ex={ex} />
+          <CueBar st={st} flash={flash} ex={ex} locale={locale} />
         </>
       )}
 
@@ -302,7 +307,7 @@ export function Session({ ex, cfg, onExit }: Props) {
             <>
               <div className="spinner" />
               <h3>{phase.msg}</h3>
-              <p>The model runs entirely on your device.</p>
+              <p>{t.onDevice}</p>
             </>
           )}
           {phase.kind === "error" && (
@@ -310,14 +315,14 @@ export function Session({ ex, cfg, onExit }: Props) {
               <div className="card-icon bad">
                 <Icon.Camera size={26} />
               </div>
-              <h3>Camera unavailable</h3>
+              <h3>{t.cameraUnavailable}</h3>
               <p>{phase.msg}</p>
               <div className="card-actions">
                 <button className="btn" onClick={() => location.reload()}>
-                  Retry
+                  {t.retry}
                 </button>
                 <label className="btn btn-primary">
-                  Analyse a video file
+                  {t.analyseVideo}
                   <input
                     type="file"
                     accept="video/*"
@@ -326,7 +331,7 @@ export function Session({ ex, cfg, onExit }: Props) {
                       const f = e.target.files?.[0];
                       if (f) {
                         setMirror(false);
-                        setPhase({ kind: "loading", msg: "Opening video…" });
+                        setPhase({ kind: "loading", msg: t.openingVideo });
                         setFileSrc(URL.createObjectURL(f));
                       }
                     }}
@@ -341,10 +346,10 @@ export function Session({ ex, cfg, onExit }: Props) {
                 <DemoFigure spec={ex.demo} period={3.6} highlight />
               </div>
               <h3>{st.headline}</h3>
-              <p>{st.status === "framing" || st.status === "searching" ? `${st.detail} ${ex.camera}` : st.detail}</p>
+              <p>{st.status === "framing" || st.status === "searching" ? `${st.detail} ${exerciseText(locale, ex).camera}` : st.detail}</p>
               {st.status === "orient" && (
                 <span className="chip">
-                  {ex.view === "side" ? <Icon.Side size={14} /> : <Icon.Front size={14} />} {ex.view === "side" ? "Side view" : "Front view"}
+                  {ex.view === "side" ? <Icon.Side size={14} /> : <Icon.Front size={14} />} {ex.view === "side" ? t.sideView : t.frontView}
                 </span>
               )}
             </>
@@ -366,14 +371,14 @@ export function Session({ ex, cfg, onExit }: Props) {
           <div className="card-icon good big">
             <Icon.Check size={34} />
           </div>
-          <h3>Set complete</h3>
-          <p>Putting your summary together…</p>
+          <h3>{m.status.done[0]}</h3>
+          <p>{m.ui.finishing}</p>
         </div>
       )}
 
       {paused && phase.kind === "running" && (
         <div className="paused-pill glass">
-          <Icon.Pause size={16} /> Paused · press space to resume
+          <Icon.Pause size={16} /> {t.paused}
         </div>
       )}
     </div>
@@ -395,29 +400,31 @@ function Ring({ value, children, tone = "accent" }: { value: number; children: R
   );
 }
 
-function RepRing({ done, target }: { done: number; target: number }) {
+function RepRing({ done, target, label }: { done: number; target: number; label: string }) {
   return (
     <Ring value={done / target}>
       <span className="ring-big" key={done}>
         {done}
       </span>
-      <span className="ring-small">of {target} reps</span>
+      <span className="ring-small">{label}</span>
     </Ring>
   );
 }
 
-function HoldRing({ st }: { st: CoachState }) {
+function HoldRing({ st, locale }: { st: CoachState; locale: Locale }) {
+  const t = locale.ui.session;
   const h = st.hold!;
   const left = Math.max(0, Math.ceil(h.target - h.elapsed));
   return (
     <Ring value={h.elapsed / h.target} tone={h.paused ? "minor" : h.inPosition ? "good" : "accent"}>
       <span className="ring-big">{left}</span>
-      <span className="ring-small">{h.paused ? "paused" : h.inPosition ? "sec left" : "get in position"}</span>
+      <span className="ring-small">{h.paused ? t.holdPaused : h.inPosition ? t.secLeft : t.getInPosition}</span>
     </Ring>
   );
 }
 
-function RangeMeter({ st, label }: { st: CoachState; label: string }) {
+function RangeMeter({ st, label, locale }: { st: CoachState; label: string; locale: Locale }) {
+  const t = locale.ui.session;
   const refP = (st.refValue - st.startValue) / (st.goalValue - st.startValue || 1);
   const max = Math.max(1.2, refP * 1.05);
   const toPct = (p: number) => `${Math.min(100, Math.max(0, (p / max) * 100))}%`;
@@ -436,11 +443,11 @@ function RangeMeter({ st, label }: { st: CoachState; label: string }) {
         <div className={`meter-fill ${reached ? "reached" : ""}`} style={{ height: toPct(st.progress) }} />
         {peakRef.current > 0.3 && <div className="meter-peak" style={{ bottom: toPct(peakRef.current) }} />}
         <div className="meter-goal" style={{ bottom: toPct(1) }}>
-          <span>Goal {Math.round(st.goalValue)}°</span>
+          <span>{t.goal(fmtValue(locale, st.goalValue, "°"))}</span>
         </div>
         {refP > 1.02 && (
           <div className="meter-ref" style={{ bottom: toPct(refP) }}>
-            <span>Ref {Math.round(st.refValue)}°</span>
+            <span>{t.ref(fmtValue(locale, st.refValue, "°"))}</span>
           </div>
         )}
       </div>
@@ -448,26 +455,29 @@ function RangeMeter({ st, label }: { st: CoachState; label: string }) {
   );
 }
 
-function CueBar({ st, flash, ex }: { st: CoachState; flash: RepRecord | null; ex: ExerciseDef }) {
+function CueBar({ st, flash, ex, locale }: { st: CoachState; flash: RepRecord | null; ex: ExerciseDef; locale: Locale }) {
+  const m = locale.messages;
+  const t = locale.ui.session;
   let tone = "neutral", icon = <Icon.Info size={20} />, title = st.headline, sub = st.detail;
   const fault = st.faults[0];
   if (fault && (st.status === "active" || st.status === "ready")) {
     tone = fault.severity === "major" ? "major" : "minor";
     icon = <Icon.Alert size={20} />;
     title = fault.cue;
-    sub = `${fault.label} · ${Math.round(fault.value)}${fault.unit} (limit ${fault.threshold}${fault.unit})`;
+    sub = t.faultDetail(fault.label, fmtValue(locale, fault.value, fault.unit), fmtValue(locale, fault.threshold, fault.unit));
   } else if (flash) {
     const clean = flash.faults.length === 0 && flash.full;
     tone = clean ? "good" : "minor";
     icon = clean ? <Icon.Check size={20} /> : <Icon.Alert size={20} />;
-    title = clean ? `Rep ${ex.bothSides ? st.repsThisSide : flash.index}: great rep` : `Rep ${ex.bothSides ? st.repsThisSide : flash.index} counted`;
-    const fl = flash.faults.map((id) => (id === "tempo" ? "Too fast" : faultInfo(ex, id).label));
-    sub = clean ? `Score ${flash.score} · ${Math.round(Math.abs(flash.peak))}° peak` : [...fl, ...(flash.full ? [] : ["Short of goal"])].join(" · ") + ` · score ${flash.score}`;
+    const n = ex.bothSides ? st.repsThisSide : flash.index;
+    title = clean ? m.ui.greatRep(n) : m.ui.repCounted(n);
+    const fl = flash.faults.map((id) => (id === "tempo" ? m.ui.tooFast : faultInfo(ex, id, locale).label));
+    sub = clean ? t.cleanRepDetail(flash.score, fmtValue(locale, Math.abs(flash.peak), st.unit)) : [...fl, ...(flash.full ? [] : [m.ui.shortOfGoal])].join(" · ") + ` · ${t.score(flash.score)}`;
   } else if (st.goodToGo) {
     tone = "good";
     icon = <Icon.Check size={20} />;
   } else if (st.status === "active" && ex.kind === "reps") {
-    sub = st.progress >= 0.95 ? "Goal reached — return with control" : `Aim for the goal line (${Math.round(st.goalValue)}°)`;
+    sub = st.progress >= 0.95 ? m.ui.goalReached : m.ui.aimFor(Math.round(st.goalValue));
   } else if (st.status === "active" && ex.kind === "hold" && st.hold?.inPosition) {
     tone = "good";
     icon = <Icon.Check size={20} />;

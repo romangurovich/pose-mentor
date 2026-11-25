@@ -4,6 +4,8 @@ import { METRICS } from "../coach/metrics.ts";
 import type { ModelVariant } from "../pose/detector.ts";
 import { DemoFigure } from "./demo/DemoFigure.tsx";
 import { Icon } from "./icons.tsx";
+import { useI18n } from "./i18n.tsx";
+import { exerciseText, fmtValue, metricLabel } from "../i18n/index.ts";
 
 export interface SessionConfig {
   rangeGoal: number;
@@ -43,6 +45,9 @@ export function SetupSheet({ ex, onClose, onStart }: Props) {
     model: prefs.model ?? "full",
   });
   const [why, setWhy] = useState(false);
+  const { locale } = useI18n();
+  const t = locale.ui.setup;
+  const text = exerciseText(locale, ex);
   const set = <K extends keyof SessionConfig>(k: K, v: SessionConfig[K]) => setCfg((c) => ({ ...c, [k]: v }));
 
   useEffect(() => {
@@ -54,11 +59,12 @@ export function SetupSheet({ ex, onClose, onStart }: Props) {
   const { start, target } = ex.primary;
   const goal = Math.round(start + (target - start) * cfg.rangeGoal);
   const metric = METRICS[ex.primary.metric];
+  const metricName = metricLabel(locale, ex.primary.metric);
 
   return (
     <div className="sheet-backdrop" onClick={onClose}>
       <div className="sheet" role="dialog" aria-modal aria-labelledby="sheet-title" onClick={(e) => e.stopPropagation()}>
-        <button className="icon-btn sheet-close" onClick={onClose} aria-label="Close">
+        <button className="icon-btn sheet-close" onClick={onClose} aria-label={t.close}>
           <Icon.Close />
         </button>
         <div className="sheet-visual">
@@ -66,8 +72,8 @@ export function SetupSheet({ ex, onClose, onStart }: Props) {
           <div className="camera-tip">
             <Icon.Camera size={18} />
             <div>
-              <strong>Camera setup</strong>
-              <span>{ex.camera}</span>
+              <strong>{t.cameraSetup}</strong>
+              <span>{text.camera}</span>
             </div>
           </div>
         </div>
@@ -75,14 +81,13 @@ export function SetupSheet({ ex, onClose, onStart }: Props) {
         <div className="sheet-body">
           <span className="eyebrow">
             {ex.view === "side" ? <Icon.Side size={14} /> : <Icon.Front size={14} />}
-            {ex.region === "knee-hip" ? "Knee & hip" : ex.region === "shoulder" ? "Shoulder" : "Spine & neck"} ·{" "}
-            {ex.kind === "reps" ? "Exercise" : "Hold"}
+            {t.region[ex.region]} · {ex.kind === "reps" ? t.kindExercise : t.kindHold}
           </span>
-          <h2 id="sheet-title">{ex.name}</h2>
-          <p className="sheet-tagline">{ex.tagline}</p>
+          <h2 id="sheet-title">{text.name}</h2>
+          <p className="sheet-tagline">{text.tagline}</p>
 
           <ol className="steps">
-            {ex.steps.map((s, i) => (
+            {text.steps.map((s, i) => (
               <li key={i}>
                 <span>{i + 1}</span>
                 {s}
@@ -93,34 +98,30 @@ export function SetupSheet({ ex, onClose, onStart }: Props) {
           <div className="options">
             <div className="opt">
               <div className="opt-head">
-                <label htmlFor="goal">Range goal</label>
+                <label htmlFor="goal">{t.rangeGoal}</label>
                 <span className="opt-value">
-                  {Math.round(cfg.rangeGoal * 100)}% · {goal}
-                  {metric.unit} {metric.label.toLowerCase()}
+                  {fmtValue(locale, cfg.rangeGoal * 100, "%")} · {fmtValue(locale, goal, metric.unit)} {locale.id === "de" ? metricName : metricName.toLowerCase()}
                 </span>
               </div>
               <input id="goal" type="range" min={0.4} max={1} step={0.05} value={cfg.rangeGoal} onChange={(e) => set("rangeGoal", Number(e.target.value))} style={{ ["--p" as string]: `${((cfg.rangeGoal - 0.4) / 0.6) * 100}%` }} />
-              <p className="opt-hint">
-                Of the healthy reference ({target}
-                {metric.unit}). Early in rehab, start lower and progress as your therapist advises.
-              </p>
+              <p className="opt-hint">{t.goalHint(fmtValue(locale, target, metric.unit))}</p>
             </div>
 
             <div className="opt-row">
               {ex.kind === "reps" ? (
-                <Stepper label={ex.bothSides ? "Reps per side" : "Reps"} value={cfg.reps} min={1} max={30} onChange={(v) => set("reps", v)} />
+                <Stepper label={ex.bothSides ? t.repsPerSide : t.reps} value={cfg.reps} min={1} max={30} onChange={(v) => set("reps", v)} dec={t.decrease} inc={t.increase} />
               ) : (
-                <Stepper label={ex.bothSides ? "Hold per side" : "Hold"} value={cfg.holdSeconds} min={5} max={120} step={5} suffix="s" onChange={(v) => set("holdSeconds", v)} />
+                <Stepper label={ex.bothSides ? t.holdPerSide : t.hold} value={cfg.holdSeconds} min={5} max={120} step={5} suffix=" s" onChange={(v) => set("holdSeconds", v)} dec={t.decrease} inc={t.increase} />
               )}
               {ex.bothSides && (
                 <div className="opt">
                   <div className="opt-head">
-                    <label>Start with</label>
+                    <label>{t.startWith}</label>
                   </div>
                   <div className="seg seg-sm">
                     {(["auto", "left", "right"] as const).map((s) => (
                       <button key={s} className={cfg.startSide === s ? "on" : ""} onClick={() => set("startSide", s)}>
-                        {s === "auto" ? "Auto" : s === "left" ? "Left" : "Right"}
+                        {t[s]}
                       </button>
                     ))}
                   </div>
@@ -132,13 +133,13 @@ export function SetupSheet({ ex, onClose, onStart }: Props) {
               <label className="toggle">
                 <input type="checkbox" checked={cfg.voice} onChange={(e) => set("voice", e.target.checked)} />
                 <span className="toggle-ui" />
-                <span>Voice coaching</span>
+                <span>{t.voiceCoaching}</span>
               </label>
               <div className="opt">
-                <div className="seg seg-sm" title="Pose model">
+                <div className="seg seg-sm" title={t.poseModel}>
                   {(["lite", "full", "heavy"] as const).map((m) => (
                     <button key={m} className={cfg.model === m ? "on" : ""} onClick={() => set("model", m)}>
-                      {m === "lite" ? "Fast" : m === "full" ? "Balanced" : "Precise"}
+                      {m === "lite" ? t.modelFast : m === "full" ? t.modelBalanced : t.modelPrecise}
                     </button>
                   ))}
                 </div>
@@ -147,25 +148,22 @@ export function SetupSheet({ ex, onClose, onStart }: Props) {
           </div>
 
           <button className="why" onClick={() => setWhy((w) => !w)} aria-expanded={why}>
-            <Icon.Info size={16} /> What I check, and why these numbers
+            <Icon.Info size={16} /> {t.why}
           </button>
           {why && (
             <div className="why-body">
+              {t.technicalInEnglish && <p className="why-lang">{t.technicalInEnglish}</p>}
               <div className="why-item">
-                <strong>
-                  Range: {metric.label} {start}
-                  {metric.unit} → {target}
-                  {metric.unit}
-                </strong>
+                <strong>{t.whyRange(metricName, `${fmtValue(locale, start, metric.unit)} → ${fmtValue(locale, target, metric.unit)}`)}</strong>
                 <span>{ex.primary.basis}</span>
               </div>
               {ex.checks.map((c) => (
                 <div className="why-item" key={c.id}>
                   <strong>
-                    {c.label}: “{c.cue}”
+                    {text.checks[c.id].label}: “{text.checks[c.id].cue}”
                   </strong>
                   <span>
-                    {METRICS[c.metric].label} {c.relative ? "change " : ""}
+                    {metricLabel(locale, c.metric)} {c.relative ? `${t.change} ` : ""}
                     {c.op} {c.threshold}
                     {c.relative === "percent" ? "%" : METRICS[c.metric].unit}. {c.basis}
                   </span>
@@ -173,7 +171,7 @@ export function SetupSheet({ ex, onClose, onStart }: Props) {
               ))}
               {ex.source.dataset && (
                 <div className="why-item">
-                  <strong>Data</strong>
+                  <strong>{t.data}</strong>
                   <span>
                     {ex.source.dataset}, {ex.source.movement}. {ex.source.notes}
                   </span>
@@ -189,30 +187,30 @@ export function SetupSheet({ ex, onClose, onStart }: Props) {
               onStart(cfg);
             }}
           >
-            <Icon.Camera size={18} /> Start session
+            <Icon.Camera size={18} /> {t.start}
           </button>
-          <p className="fine">Camera access is needed. Video is processed on this device and never uploaded.</p>
+          <p className="fine">{t.privacy}</p>
         </div>
       </div>
     </div>
   );
 }
 
-function Stepper({ label, value, min, max, step = 1, suffix = "", onChange }: { label: string; value: number; min: number; max: number; step?: number; suffix?: string; onChange: (v: number) => void }) {
+function Stepper({ label, value, min, max, step = 1, suffix = "", onChange, dec, inc }: { label: string; value: number; min: number; max: number; step?: number; suffix?: string; onChange: (v: number) => void; dec: string; inc: string }) {
   return (
     <div className="opt">
       <div className="opt-head">
         <label>{label}</label>
       </div>
       <div className="stepper">
-        <button onClick={() => onChange(Math.max(min, value - step))} aria-label="Decrease">
+        <button onClick={() => onChange(Math.max(min, value - step))} aria-label={dec}>
           −
         </button>
         <span>
           {value}
           {suffix}
         </span>
-        <button onClick={() => onChange(Math.min(max, value + step))} aria-label="Increase">
+        <button onClick={() => onChange(Math.min(max, value + step))} aria-label={inc}>
           +
         </button>
       </div>

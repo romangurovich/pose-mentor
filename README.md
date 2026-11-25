@@ -45,6 +45,13 @@ webcam ─► MediaPipe Pose (WASM/WebGL) ─► 33 landmarks ─► One Euro fi
   - debounced checks, some evaluated relative to a baseline captured in the start position
   - tapered speech: a repeating fault gets its full cue on the first two reps, then a short reminder every other rep and a
     soft tick in between (major faults are cued every rep); fixing a cued fault earns a "Better — …"
+- **`src/i18n/`**: every user-facing string comes from a typed `Locale`: the coach's catalog (spoken cues and live
+  coaching text), app chrome, metric names, and per-exercise text (name, steps, camera tip, check labels and cues).
+  English exercise text is the exercise data itself; `locales/{es,fr,de,pt,ru}.ts` translate it. The engine takes the locale
+  as an option, so it stays pure. All text addressed to the user is gender-neutral, because the app doesn't know the user's gender.
+  The female/male setting picks the coach's *voice* from each locale's list of known system voices (browsers expose voice
+  names, not genders). The clinical provenance notes ("why these numbers") stay in English on purpose, and the app says so.
+  Settings (language, voice, theme: system/light/dark) live in the nav. Deep link: `?lang=de&voice=male&theme=light`.
 - **`src/ui/`**: React UI. `overlay.ts` draws the skeleton, fault highlights and live angle arc on a canvas. `demo/figure.ts`
   is a small forward-kinematics stick figure that animates every exercise demo from two joint-angle poses.
 

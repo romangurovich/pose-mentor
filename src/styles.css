@@ -902,7 +902,8 @@ input[type="range"]::-moz-range-thumb {
   position: absolute;
   inset: 0;
 }
-.stage video {
+.stage video,
+.stage canvas.feed {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -910,6 +911,11 @@ input[type="range"]::-moz-range-thumb {
 }
 .feed {
   object-fit: contain;
+}
+/* the camera stream is only a source: .feed shows the analysed frame (kept composited so frame callbacks fire) */
+.stage video.source {
+  opacity: 0;
+  pointer-events: none;
 }
 .backdrop {
   object-fit: cover;

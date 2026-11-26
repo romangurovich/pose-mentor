@@ -26,6 +26,12 @@ type Phase = { kind: "loading"; msg: string } | { kind: "error"; msg: string } |
 
 const videoParam = () => new URLSearchParams(location.search).get("video");
 
+/**
+ * Smoothing for the drawn skeleton: much lighter than the coach's (PoseSmoother defaults), ~10–17 ms of lag at
+ * rehab speeds instead of 45–65 ms, still a third less jitter than raw landmarks.
+ */
+const DISPLAY_FILTER = { minCutoff: 6, beta: 20 };
+
 /** the end card stays at least this long, and the summary follows this beat after the coach's last word */
 const END_CARD_MIN_MS = 1800;
 const END_BEAT_MS = 600;
@@ -36,6 +42,8 @@ export function Session({ ex, cfg, onExit }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const backdropRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  /** shows the frame that was analysed, in step with its skeleton (the <video> itself is only the source) */
+  const feedRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const { locale: currentLocale, settings } = useI18n();
   // the language is fixed for the length of a session (the engine and voice are built once)
@@ -104,12 +112,17 @@ export function Session({ ex, cfg, onExit }: Props) {
     let detector: PoseDetector | null = null;
     let rafId = 0;
     const video = videoRef.current!;
+    // two filters on the same detections: steady angles for the coach, near-instant lines for the eye
     const smoother = new PoseSmoother();
+    const displaySmoother = new PoseSmoother(DISPLAY_FILTER.minCutoff, DISPLAY_FILTER.beta);
     let lastHud = 0;
     let frames = 0;
     let fpsT = performance.now();
-    let lastFrame: PoseFrame | null = null;
     let lastVideoTime = -1;
+    /** the skeleton matching the frame currently on screen */
+    let shownFrame: PoseFrame | null = null;
+    /** time spent in the model for the last frame (dev hook) */
+    let inferMs = 0;
 
     async function start() {
       try {
@@ -147,49 +160,76 @@ export function Session({ ex, cfg, onExit }: Props) {
       }
     }
 
-    function step(now: number) {
-      const canvas = canvasRef.current, stage = stageRef.current;
-      if (!detector || cancelled || !canvas || !stage) return;
-      if (video.currentTime !== lastVideoTime && !pausedRef.current) {
-        lastVideoTime = video.currentTime;
-        const raw = detector.detect(video, now);
-        lastFrame = raw ? smoother.apply(raw) : null;
-        if (!raw) smoother.reset();
-        const st = doneRef.current ? null : engineRef.current.update(lastFrame);
-        if (st) {
-          for (const ev of st.events) {
-            if (ev.type === "say") voiceRef.current.say(ev.text, ev.kind);
-            if (ev.type === "flag") voiceRef.current.tick();
-            if (ev.type === "rep") {
-              voiceRef.current.chime(ev.rep.faults.length === 0 && ev.rep.full);
-              setFlash(ev.rep);
-            }
-            if (ev.type === "done") {
-              doneRef.current = true;
-              setHud(st);
-            }
+    /**
+     * Analyse the video's current frame and put that same frame on screen, in one go: the picture (feed canvas)
+     * and the skeleton (overlay, drawn right after) always show the same moment. Runs once per animation frame;
+     * `frameTime` (the video's time) skips frames already handled. (Not from requestVideoFrameCallback: MediaPipe
+     * inference called there measured about twice as slow in Chrome.)
+     */
+    function onVideoFrame(frameTime: number, now: number) {
+      const feed = feedRef.current;
+      if (!detector || cancelled || !feed || video.readyState < 2 || !video.videoWidth || frameTime === lastVideoTime) return;
+      lastVideoTime = frameTime;
+      const paused = pausedRef.current;
+      const t0 = performance.now();
+      const raw = paused ? undefined : detector.detect(video, now);
+      inferMs = performance.now() - t0;
+      if (feed.width !== video.videoWidth || feed.height !== video.videoHeight) {
+        feed.width = video.videoWidth;
+        feed.height = video.videoHeight;
+      }
+      feed.getContext("2d")!.drawImage(video, 0, 0);
+      onDetection(raw, now);
+    }
+
+    /** `raw` undefined = paused (the picture is shown, not analysed) */
+    function onDetection(raw: PoseFrame | null | undefined, now: number) {
+      if (raw === undefined) {
+        shownFrame = null;
+        return;
+      }
+      shownFrame = raw ? displaySmoother.apply(raw) : null;
+      if (!raw) displaySmoother.reset();
+      const lastFrame = raw ? smoother.apply(raw) : null;
+      if (!raw) smoother.reset();
+      const st = doneRef.current ? null : engineRef.current.update(lastFrame);
+      if (st) {
+        for (const ev of st.events) {
+          if (ev.type === "say") voiceRef.current.say(ev.text, ev.kind);
+          if (ev.type === "flag") voiceRef.current.tick();
+          if (ev.type === "rep") {
+            voiceRef.current.chime(ev.rep.faults.length === 0 && ev.rep.full);
+            setFlash(ev.rep);
           }
-          // after this frame's lines are queued: let the coach finish ("Set complete. Nice work!") before the summary
-          if (doneRef.current && st.events.some((e) => e.type === "done")) {
-            const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
-            const spoken = voiceRef.current.whenIdle().then(() => wait(END_BEAT_MS));
-            void Promise.all([wait(END_CARD_MIN_MS), Promise.race([spoken, wait(END_SPEECH_MAX_MS)])]).then(() => !cancelled && onExit(buildResult()));
-          }
-          if (now - lastHud > 70 || st.events.length) {
-            lastHud = now;
+          if (ev.type === "done") {
+            doneRef.current = true;
             setHud(st);
           }
-          stRef.current = st;
-          if (import.meta.env.DEV) (window as unknown as { __poseMentor: unknown }).__poseMentor = { state: st, frame: lastFrame, fps: frames };
         }
-        frames++;
-        if (now - fpsT > 1000) {
-          setFps(Math.round((frames * 1000) / (now - fpsT)));
-          frames = 0;
-          fpsT = now;
+        // after this frame's lines are queued: let the coach finish ("Set complete. Nice work!") before the summary
+        if (doneRef.current && st.events.some((e) => e.type === "done")) {
+          const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+          const spoken = voiceRef.current.whenIdle().then(() => wait(END_BEAT_MS));
+          void Promise.all([wait(END_CARD_MIN_MS), Promise.race([spoken, wait(END_SPEECH_MAX_MS)])]).then(() => !cancelled && onExit(buildResult()));
         }
+        if (now - lastHud > 70 || st.events.length) {
+          lastHud = now;
+          setHud(st);
+        }
+        stRef.current = st;
+        if (import.meta.env.DEV) (window as unknown as { __poseMentor: unknown }).__poseMentor = { state: st, frame: lastFrame, fps: frames, inferMs };
       }
-      // draw every display frame
+      frames++;
+      if (now - fpsT > 1000) {
+        setFps(Math.round((frames * 1000) / (now - fpsT)));
+        frames = 0;
+        fpsT = now;
+      }
+    }
+
+    function draw(now: number) {
+      const canvas = canvasRef.current, stage = stageRef.current, feed = feedRef.current;
+      if (!canvas || !stage || !feed) return;
       const rect = stage.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
       if (canvas.width !== Math.round(rect.width * dpr) || canvas.height !== Math.round(rect.height * dpr)) {
@@ -198,14 +238,15 @@ export function Session({ ex, cfg, onExit }: Props) {
       }
       const ctx = canvas.getContext("2d")!;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const L = computeLayout(rect.width, rect.height, video.videoWidth || 16, video.videoHeight || 9, mirrorRef.current);
-      drawOverlay(ctx, lastFrame, stRef.current, ex, L, now);
+      const L = computeLayout(rect.width, rect.height, feed.width || 16, feed.height || 9, mirrorRef.current);
+      drawOverlay(ctx, shownFrame, stRef.current, ex, L, now);
     }
 
     function loop() {
       const tick = (now: number) => {
         if (cancelled) return;
-        step(now);
+        onVideoFrame(video.currentTime, now);
+        draw(now);
         rafId = requestAnimationFrame(tick);
       };
       rafId = requestAnimationFrame(tick);
@@ -248,7 +289,8 @@ export function Session({ ex, cfg, onExit }: Props) {
     <div className="session">
       <div className="stage" ref={stageRef}>
         <video ref={backdropRef} className={`backdrop ${mirror ? "mirror" : ""}`} playsInline muted aria-hidden />
-        <video ref={videoRef} className={`feed ${mirror ? "mirror" : ""}`} playsInline muted />
+        <video ref={videoRef} className="source" playsInline muted />
+        <canvas ref={feedRef} className={`feed ${mirror ? "mirror" : ""}`} />
         <canvas ref={canvasRef} className="overlay" />
         <div className="vignette" />
       </div>

@@ -510,4 +510,6 @@ export const de: Locale = {
     female: [/anna|petra|helena|marlene|vicki|sandra/i, /hedda|katja|amala|louisa|seraphina|tanja/i, /google deutsch/i, /flo|sandy|shelley|grandma/i],
     male: [/markus|yannick|martin|hans/i, /stefan|conrad|killian|florian|ralf|bernd/i, /eddy|reed|rocko|grandpa/i],
   },
+  // Kokoro has no German: Piper voices
+  tts: { female: { engine: "piper", model: "de_DE-kerstin-medium" }, male: { engine: "piper", model: "de_DE-thorsten-high" } },
 };

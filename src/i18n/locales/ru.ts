@@ -521,4 +521,6 @@ export const ru: Locale = {
     female: [/milena|katya|alena|al[её]na/i, /irina|svetlana|dariya|daria/i, /google русский/i],
     male: [/yuri|yuriy|maxim/i, /pavel|dmitry|dmitri/i],
   },
+  // Kokoro has no Russian: Piper voices
+  tts: { female: { engine: "piper", model: "ru_RU-irina-medium" }, male: { engine: "piper", model: "ru_RU-dmitri-medium" } },
 };

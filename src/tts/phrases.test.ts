@@ -6,7 +6,7 @@ import { LM, type PoseFrame } from "../pose/landmarks.ts";
 import { LOCALES } from "../i18n/index.ts";
 import type { Locale } from "../i18n/types.ts";
 import { allPhrases, sessionPhrases } from "./phrases.ts";
-import { clipId } from "./hash.ts";
+import { clipId, voiceKey } from "./hash.ts";
 
 /** everything the engine said while playing these frames */
 function said(engine: CoachEngine, frames: PoseFrame[]): string[] {
@@ -109,7 +109,7 @@ describe("clip ids", () => {
     const ids = new Set<string>();
     let n = 0;
     for (const l of LOCALES)
-      for (const v of [l.kokoro?.female, l.kokoro?.male].filter(Boolean) as string[])
+      for (const v of Object.values(l.tts ?? {}).map(voiceKey))
         for (const p of allPhrases(l)) {
           ids.add(clipId(v, p));
           n++;

@@ -26,6 +26,12 @@ type Phase = { kind: "loading"; msg: string } | { kind: "error"; msg: string } |
 
 const videoParam = () => new URLSearchParams(location.search).get("video");
 
+/** the end card stays at least this long, and the summary follows this beat after the coach's last word */
+const END_CARD_MIN_MS = 1800;
+const END_BEAT_MS = 600;
+/** never hold the summary longer than this for speech (a device voice can fail to report that it finished) */
+const END_SPEECH_MAX_MS = 12000;
+
 export function Session({ ex, cfg, onExit }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const backdropRef = useRef<HTMLVideoElement>(null);
@@ -161,8 +167,13 @@ export function Session({ ex, cfg, onExit }: Props) {
             if (ev.type === "done") {
               doneRef.current = true;
               setHud(st);
-              setTimeout(() => onExit(buildResult()), 2600);
             }
+          }
+          // after this frame's lines are queued: let the coach finish ("Set complete. Nice work!") before the summary
+          if (doneRef.current && st.events.some((e) => e.type === "done")) {
+            const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+            const spoken = voiceRef.current.whenIdle().then(() => wait(END_BEAT_MS));
+            void Promise.all([wait(END_CARD_MIN_MS), Promise.race([spoken, wait(END_SPEECH_MAX_MS)])]).then(() => !cancelled && onExit(buildResult()));
           }
           if (now - lastHud > 70 || st.events.length) {
             lastHud = now;

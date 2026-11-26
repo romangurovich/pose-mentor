@@ -502,5 +502,5 @@ export const pt: Locale = {
     male: [/felipe|ricardo|eduardo/i, /daniel|ant[oô]nio|fabio|f[aá]bio|julio|j[uú]lio|humberto/i, /eddy|reed|rocko|grandpa/i],
   },
 
-  kokoro: { female: "pf_dora", male: "pm_alex", espeak: "roa/pt-BR" },
+  tts: { female: { engine: "kokoro", voice: "pf_dora", espeak: "roa/pt-BR" }, male: { engine: "kokoro", voice: "pm_alex", espeak: "roa/pt-BR" } },
 };

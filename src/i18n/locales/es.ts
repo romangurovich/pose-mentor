@@ -505,5 +505,5 @@ export const es: Locale = {
     male: [/jorge|juan|diego|carlos/i, /pablo|ra[uú]l|[aá]lvaro|gonzalo|alonso/i, /eddy|reed|rocko|grandpa/i],
   },
 
-  kokoro: { female: "ef_dora", male: "em_alex", espeak: "roa/es" },
+  tts: { female: { engine: "kokoro", voice: "ef_dora", espeak: "roa/es" }, male: { engine: "kokoro", voice: "em_alex", espeak: "roa/es" } },
 };

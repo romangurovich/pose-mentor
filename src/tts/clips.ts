@@ -1,5 +1,5 @@
 /**
- * Pre-generated Kokoro voice clips (scripts/build-voices.ts → public/voice). The manifest lists which clips exist
+ * Pre-generated voice clips (Kokoro / Piper) (scripts/build-voices.ts → public/voice). The manifest lists which clips exist
  * per voice; a phrase without a clip is spoken by the device voice instead.
  */
 import { clipId } from "./hash.ts";

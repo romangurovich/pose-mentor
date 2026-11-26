@@ -6,6 +6,7 @@
  * worker is the wrong place.
  */
 import createModule from "@echogarden/espeak-ng-emscripten";
+import { respell } from "./phonemes.ts";
 
 export type Ipa = (text: string, voice: string) => string;
 
@@ -24,7 +25,7 @@ export function loadEspeak(loadData: () => Promise<ArrayBuffer>): Promise<Ipa> {
           if (rc !== 0) throw new Error(`eSpeak voice "${voice}" not found (code ${rc})`);
           current = voice;
         }
-        const r = worker.synthesize_ipa(text);
+        const r = worker.synthesize_ipa(respell(text, voice));
         if (r.code !== 0) throw new Error(`eSpeak failed (code ${r.code})`);
         return r.ipa;
       };

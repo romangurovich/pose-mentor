@@ -3,7 +3,7 @@ import { LOCALES } from "../i18n/index.ts";
 import type { VoiceGender } from "../i18n/types.ts";
 import { Icon } from "./icons.tsx";
 import { useI18n, type ThemeChoice } from "./i18n.tsx";
-import { kokoroVoiceId, previewVoice } from "./voice.ts";
+import { clipVoice, previewVoice } from "./voice.ts";
 import { hasVoice, loadManifest } from "../tts/clips.ts";
 
 /** Nav control: language, coach voice (female / male) and theme (system / light / dark). */
@@ -12,8 +12,8 @@ export function SettingsPicker() {
   const t = locale.ui.settings;
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
-  // natural (Kokoro) voice when this language/gender has one and its clips are installed
-  const kv = kokoroVoiceId(locale, settings.voice);
+  // natural (Kokoro / Piper) voice when this language/gender has one and its clips are installed
+  const kv = clipVoice(locale, settings.voice);
   const [clipsReady, setClipsReady] = useState(false);
   useEffect(() => {
     let live = true;

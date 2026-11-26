@@ -1,15 +1,23 @@
 /**
  * Spoken coaching, plus subtle audio ticks via Web Audio.
  *
- * Speech plays pre-generated Kokoro-82M clips (src/tts/clips.ts) when the language/gender has a Kokoro voice
- * and the phrase has a clip, and the device's Web Speech voices otherwise.
+ * Speech plays pre-generated Kokoro / Piper clips (src/tts/clips.ts) when the language/gender has a natural
+ * voice and the phrase has a clip, and the device's Web Speech voices otherwise.
  */
 import { DEFAULT_LOCALE } from "../i18n/index.ts";
 import type { Locale, VoiceGender } from "../i18n/types.ts";
 import { clipBuffer, hasClip, loadManifest, preload } from "../tts/clips.ts";
+import { voiceKey } from "../tts/hash.ts";
 
 type Kind = "cue" | "count" | "praise" | "info";
 const PRIORITY: Record<Kind, number> = { cue: 3, info: 2, count: 1, praise: 0 };
+
+/** silence between consecutive phrases, so one thought lands before the next starts */
+const GAP_MS = 450;
+/** shorter breath before a cue that cut the previous phrase off */
+const INTERRUPT_GAP_MS = 150;
+/** device-voice rates (1 = the voice's normal pace): deliberately unhurried, counts a touch quicker */
+const SYSTEM_RATE = { speech: 0.92, count: 1 };
 
 /**
  * Chrome fills the voice list asynchronously: getVoices() is [] until "voiceschanged" fires. Resolve once
@@ -54,9 +62,10 @@ function fallbackPitch(gender: VoiceGender, matched: boolean): number {
   return gender === "male" ? 0.85 : 1.1;
 }
 
-/** the Kokoro voice id for a language + gender, if Kokoro has one */
-export function kokoroVoiceId(l: Locale, gender: VoiceGender): string | null {
-  return l.kokoro?.[gender] ?? null;
+/** the pre-generated voice (clip folder) for a language + gender, if it has one */
+export function clipVoice(l: Locale, gender: VoiceGender): string | null {
+  const v = l.tts?.[gender];
+  return v ? voiceKey(v) : null;
 }
 
 let sharedCtx: AudioContext | null = null;
@@ -73,19 +82,24 @@ export class VoiceCoach {
   private matched = false;
   private readonly locale: Locale;
   private readonly gender: VoiceGender;
-  private readonly kokoro: string | null;
+  /** clip folder of the natural voice, if any */
+  private readonly natural: string | null;
   private current: { kind: Kind } | null = null;
   private queue: Array<{ text: string; kind: Kind }> = [];
   /** the clip currently playing */
   private source: AudioBufferSourceNode | null = null;
   /** bumped on every interruption, so a clip that finishes loading after one is dropped */
   private generation = 0;
+  /** nothing new starts before this time (performance.now()) — the pause after the last phrase */
+  private restUntil = 0;
+  private restTimer: ReturnType<typeof setTimeout> | null = null;
+  private idleWaiters: Array<() => void> = [];
 
   constructor(locale: Locale = DEFAULT_LOCALE, gender: VoiceGender = "female") {
     this.locale = locale;
     this.gender = gender;
-    this.kokoro = kokoroVoiceId(locale, gender);
-    if (this.kokoro) void loadManifest();
+    this.natural = clipVoice(locale, gender);
+    if (this.natural) void loadManifest();
     if (typeof speechSynthesis === "undefined") return;
     const pick = () => ({ voice: this.voice, matched: this.matched } = pickVoice(this.locale, this.gender));
     pick();
@@ -94,7 +108,7 @@ export class VoiceCoach {
 
   /** decode this session's likely phrases in the background so the first cues play instantly */
   prepare(texts: Iterable<string>) {
-    if (this.kokoro) void preload(audioCtx(), this.kokoro, texts);
+    if (this.natural) void preload(audioCtx(), this.natural, texts);
   }
 
   say(text: string, kind: Kind) {
@@ -111,15 +125,37 @@ export class VoiceCoach {
     this.pump();
   }
 
+  /** resolves once everything queued has been said (at once if nothing is) */
+  whenIdle(): Promise<void> {
+    if (!this.current && !this.queue.length) return Promise.resolve();
+    return new Promise((resolve) => this.idleWaiters.push(resolve));
+  }
+
+  private settle() {
+    const waiters = this.idleWaiters;
+    this.idleWaiters = [];
+    for (const w of waiters) w();
+  }
+
   private pump() {
-    if (this.current || !this.queue.length) return;
+    if (!this.current && !this.queue.length) return this.settle();
+    if (this.current || this.restTimer) return;
+    const wait = this.restUntil - performance.now();
+    if (wait > 0) {
+      this.restTimer = setTimeout(() => {
+        this.restTimer = null;
+        this.pump();
+      }, wait);
+      return;
+    }
     const next = this.queue.shift()!;
     this.current = { kind: next.kind };
     const done = () => {
       this.current = null;
+      this.restUntil = performance.now() + GAP_MS;
       this.pump();
     };
-    if (this.kokoro && hasClip(this.kokoro, next.text)) this.playClip(this.kokoro, next.text, next.kind, done);
+    if (this.natural && hasClip(this.natural, next.text)) this.playClip(this.natural, next.text, next.kind, done);
     else this.speakSystem(next.text, next.kind, done);
   }
 
@@ -152,7 +188,7 @@ export class VoiceCoach {
     const u = new SpeechSynthesisUtterance(text);
     if (this.voice) u.voice = this.voice;
     u.lang = this.voice?.lang ?? this.locale.tag;
-    u.rate = kind === "count" ? 1.15 : 1.04;
+    u.rate = kind === "count" ? SYSTEM_RATE.count : SYSTEM_RATE.speech;
     u.pitch = fallbackPitch(this.gender, this.matched);
     u.volume = 1;
     u.onend = done;
@@ -163,6 +199,7 @@ export class VoiceCoach {
   /** stop whatever is being said right now (clip or device voice) */
   private silence() {
     this.generation++;
+    this.restUntil = performance.now() + INTERRUPT_GAP_MS;
     if (this.source) {
       const src = this.source;
       this.source = null;
@@ -180,6 +217,9 @@ export class VoiceCoach {
     this.queue = [];
     this.current = null;
     this.silence();
+    if (this.restTimer) clearTimeout(this.restTimer);
+    this.restTimer = null;
+    this.settle();
   }
 
   /** very soft single blip: "I saw that" when a fault is flagged but the spoken cue is held back */
@@ -231,7 +271,7 @@ export class VoiceCoach {
 
 let previewSrc: AudioBufferSourceNode | null = null;
 
-/** speak the locale's sample line in the chosen voice (settings preview): the Kokoro clip if there is one */
+/** speak the locale's sample line in the chosen voice (settings preview): the natural voice's clip if there is one */
 export async function previewVoice(l: Locale, gender: VoiceGender) {
   if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
   try {
@@ -239,7 +279,7 @@ export async function previewVoice(l: Locale, gender: VoiceGender) {
   } catch {
     /* not playing */
   }
-  const kv = kokoroVoiceId(l, gender);
+  const kv = clipVoice(l, gender);
   // create/resume the audio context inside the click, before awaiting anything
   const ctx = audioCtx();
   if (kv) {
@@ -264,6 +304,6 @@ export async function previewVoice(l: Locale, gender: VoiceGender) {
   if (voice) u.voice = voice;
   u.lang = voice?.lang ?? l.tag;
   u.pitch = fallbackPitch(gender, matched);
-  u.rate = 1.04;
+  u.rate = SYSTEM_RATE.speech;
   speechSynthesis.speak(u);
 }

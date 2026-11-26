@@ -610,5 +610,6 @@ export const fr: Locale = {
     male: [/thomas|nicolas|jacques|antoine/i, /paul|henri|claude|remy|r[eé]my|alain/i, /eddy|reed|rocko|grandpa/i],
   },
 
-  kokoro: { female: "ff_siwis", espeak: "roa/fr" },
+  // Kokoro has no male French voice
+  tts: { female: { engine: "kokoro", voice: "ff_siwis", espeak: "roa/fr" }, male: { engine: "piper", model: "fr_FR-upmc-medium", speaker: "pierre" } },
 };

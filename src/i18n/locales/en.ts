@@ -234,5 +234,5 @@ export const en: Locale = {
     male: [/\balex\b|daniel|tom|aaron|evan|nathan|oliver|arthur|rishi|fred/i, /guy|david|mark|ryan|george|eric|christopher|andrew|brian/i, /google uk english male/i, /eddy|reed|rocko|grandpa/i],
   },
 
-  kokoro: { female: "af_heart", male: "am_michael" },
+  tts: { female: { engine: "kokoro", voice: "af_heart" }, male: { engine: "kokoro", voice: "am_michael" } },
 };

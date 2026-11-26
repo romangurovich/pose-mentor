@@ -270,9 +270,18 @@ export interface Locale {
   /** system voices to prefer for each gender, tried in order (Web Speech API exposes names, not genders) */
   voices: Record<VoiceGender, RegExp[]>;
   /**
-   * Kokoro-82M voices for this language. Their audio is pre-generated at build time (scripts/build-voices.ts); a
-   * language or gender without one uses the device voice. `espeak` = eSpeak-NG voice used at build time to
-   * phonemize non-English text (English uses kokoro-js's own phonemizer).
+   * Natural voices for this language. Their audio is pre-generated at build time (scripts/build-voices.ts); a
+   * language or gender without one uses the device voice.
    */
-  kokoro?: { female?: string; male?: string; espeak?: string };
+  tts?: Partial<Record<VoiceGender, TtsVoice>>;
 }
+
+/**
+ * A pre-generated voice. Kokoro-82M where it has the language and gender (best quality); otherwise a Piper voice
+ * from rhasspy/piper-voices.
+ */
+export type TtsVoice =
+  /** `espeak` = eSpeak-NG voice that phonemizes non-English text at build time (English uses kokoro-js's own) */
+  | { engine: "kokoro"; voice: string; espeak?: string }
+  /** `model` as named in piper-voices ("de_DE-thorsten-high"); `speaker` for multi-speaker models */
+  | { engine: "piper"; model: string; speaker?: string };

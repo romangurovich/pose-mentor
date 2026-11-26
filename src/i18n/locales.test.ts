@@ -4,7 +4,7 @@ import { METRICS } from "../coach/metrics.ts";
 import { CoachEngine, faultInfo, type CoachEvent } from "../coach/engine.ts";
 import { LM, NUM_LANDMARKS, type PoseFrame, type Vec2 } from "../pose/landmarks.ts";
 import { LOCALES, exerciseText, getLocale, matchLocale } from "./index.ts";
-import { kokoroVoiceId } from "../ui/voice.ts";
+import { clipVoice } from "../ui/voice.ts";
 
 /** every string a catalog can produce: call functions with representative arguments */
 function strings(v: unknown, out: string[] = []): string[] {
@@ -67,15 +67,17 @@ describe("gender-neutral address", () => {
   }
 });
 
-describe("Kokoro voices", () => {
-  it("maps each language and gender to a Kokoro voice where Kokoro has one", () => {
-    const v = (id: string, g: "female" | "male") => kokoroVoiceId(getLocale(id), g);
+describe("natural voices", () => {
+  it("gives every language and gender one: Kokoro where it has the language, Piper otherwise", () => {
+    const v = (id: string, g: "female" | "male") => clipVoice(getLocale(id), g);
     expect([v("en", "female"), v("en", "male")]).toEqual(["af_heart", "am_michael"]);
     expect([v("es", "female"), v("es", "male")]).toEqual(["ef_dora", "em_alex"]);
-    expect([v("fr", "female"), v("fr", "male")]).toEqual(["ff_siwis", null]); // Kokoro has no male French voice
+    expect([v("fr", "female"), v("fr", "male")]).toEqual(["ff_siwis", "fr_FR-upmc-medium-pierre"]); // no male French Kokoro
     expect([v("pt", "female"), v("pt", "male")]).toEqual(["pf_dora", "pm_alex"]);
-    for (const id of ["de", "ru"]) expect([v(id, "female"), v(id, "male")]).toEqual([null, null]); // no Kokoro voices
-    expect(getLocale("en").kokoro?.espeak).toBeUndefined(); // English uses kokoro-js's own phonemizer
+    expect([v("de", "female"), v("de", "male")]).toEqual(["de_DE-kerstin-medium", "de_DE-thorsten-high"]);
+    expect([v("ru", "female"), v("ru", "male")]).toEqual(["ru_RU-irina-medium", "ru_RU-dmitri-medium"]);
+    const en = getLocale("en").tts!.female!;
+    expect(en.engine === "kokoro" && en.espeak).toBeFalsy(); // English uses kokoro-js's own phonemizer
   });
 });
 
